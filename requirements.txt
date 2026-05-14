@@ -10,3 +10,5 @@ sentence_transformers==2.7.0
 GitPython==3.1.41
 python-dotenv==1.0.1
 text-generation==0.6.1
+nodejs
+huggingface_hub==0.23.4

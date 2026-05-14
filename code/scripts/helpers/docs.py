@@ -141,5 +141,5 @@ class DocProcessor:
 
 
 if __name__ == "__main__":
-    p = DocProcessor("../data/documents", "/mnt/docs", "http://localhost:8000/uploadDocument", True)
+    p = DocProcessor("../data/documents", "/mnt/docs", "http://host.docker.internal:8000/uploadDocument", True)
     p.process()
