@@ -1,0 +1,1 @@
+{"schema":"v1","records":[{"type":"ENVIRONMENT","operation":"CREATED","data":[{"data":"Added packages through pip package manager: nodejs, huggingface_hub==0.23.4","mime":"text/plain"}],"important":null},{"type":"PROJECT","operation":"CREATED","data":[{"data":"Created app 'VS Code'","mime":"text/plain"}],"important":null}]}
