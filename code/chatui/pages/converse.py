@@ -205,7 +205,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                                   value="Self-Hosted Microservice")
                         
                         # Depending on the selected inference mode, different settings need to get exposed to the user.
-                        with gr.Tabs(selected=1) as tabs:
+                        with gr.Tabs(selected=2) as tabs:
 
                             # Inference settings for local TGI inference server
                             with gr.TabItem("Local System", id=0, interactive=False, visible=False) as local:
@@ -292,9 +292,14 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                                info = "Optional, (default: 8000)",
                                                elem_id="rag-inputs", scale=1)
 
-                                nim_model_id = gr.Textbox(value = "meta/llama-3.2-3b-instruct",
+                                nim_model_id = gr.Dropdown(
+                                           choices = ["meta/llama-3.2-3b-instruct",
+                                                      "qwen/qwen3-4b",
+                                                      "gemma3:4b"],
+                                           value = "meta/llama-3.2-3b-instruct",
                                            label = "Model running in microservice.",
-                                           info = "If none specified, defaults to: meta/llama-3.2-3b-instruct",
+                                           info = "NIM models use org/name format. Ollama models use name:tag (e.g. gemma3:4b).",
+                                           allow_custom_value = True,
                                            elem_id="rag-inputs")
 
                     # Third tab item consists of database and document upload settings
@@ -763,32 +768,35 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
             time.sleep(0.25)
             progress(0.5, desc="Setting Up RAG Backend (one-time process, may take a few moments)")
             rc = subprocess.call("/bin/bash /project/code/scripts/rag-consolidated.sh ", shell=True)
-            if rc == 2:
-                gr.Info("Inferencing is ready, but the Vector DB may still be spinning up. This can take a few moments to complete. ")
-                visibility = [False, True, True, True]
-                interactive = [False, True, True, False]
-                submit_value="[NOT READY] Submit"
-            elif rc == 0:
-                visibility = [False, True, True, True]
-                interactive = [False, True, True, False]
-                submit_value="[NOT READY] Submit"
-            else:
-                gr.Warning("Something went wrong. Check the Output in AI Workbench, or try again. ")
-                visibility = [True, True, True, False]
-                interactive = [False, False, False, False]
-                submit_value="[NOT READY] Submit"
             progress(0.75, desc="Cleaning Up")
             time.sleep(0.25)
-            return {
-                setup_settings: gr.update(visible=visibility[0], interactive=interactive[0]), 
-                inf_settings: gr.update(visible=visibility[1], interactive=interactive[1]),
-                vdb_settings: gr.update(visible=visibility[2], interactive=interactive[2]),
-                submit_btn: gr.update(value=submit_value, interactive=interactive[3]),
-                hide_all_settings: gr.update(visible=visibility[3]),
-                msg: gr.update(interactive=True, placeholder="[NOT READY] Select a model OR Select a Different Inference Mode." if rc != 1 else "Enter text and press SUBMIT"),
-            }
-        
-        rag_start_button.click(_toggle_rag_start, [rag_start_button], [setup_settings, inf_settings, vdb_settings, submit_btn, hide_all_settings, msg])
+            if rc in (0, 2):
+                if rc == 2:
+                    gr.Info("Chain server is ready. The Vector DB may still be warming up — your first query may be slow.")
+                return {
+                    setup_settings: gr.update(visible=False, interactive=False),
+                    inf_settings: gr.update(visible=True, interactive=True),
+                    vdb_settings: gr.update(visible=True, interactive=True),
+                    submit_btn: gr.update(value="Submit", interactive=True),
+                    hide_all_settings: gr.update(visible=True),
+                    msg: gr.update(interactive=True, placeholder="Enter text and press SUBMIT"),
+                    settings_tabs: gr.update(selected=1),
+                    tabs: gr.update(selected=2),
+                }
+            else:
+                gr.Warning("RAG backend failed to start. Ensure the NIM container is running, then try again.")
+                return {
+                    setup_settings: gr.update(visible=True, interactive=True),
+                    inf_settings: gr.update(visible=True, interactive=False),
+                    vdb_settings: gr.update(visible=True, interactive=False),
+                    submit_btn: gr.update(value="[NOT READY] Submit", interactive=False),
+                    hide_all_settings: gr.update(visible=False),
+                    msg: gr.update(interactive=False, placeholder="[NOT READY] Ensure the NIM container is running, then click Set Up RAG Backend."),
+                    settings_tabs: gr.update(selected=0),
+                    tabs: gr.update(selected=2),
+                }
+
+        rag_start_button.click(_toggle_rag_start, [rag_start_button], [setup_settings, inf_settings, vdb_settings, submit_btn, hide_all_settings, msg, settings_tabs, tabs])
 
         # form actions
         _my_build_stream = functools.partial(_stream_predict, client)
@@ -831,7 +839,40 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                chatbot], [msg, chatbot, context, metrics, metrics_history]
         )
 
-        page.load(_toggle_rag_start, [rag_start_button], [setup_settings, inf_settings, vdb_settings, submit_btn, hide_all_settings, msg])
+        def _auto_start(progress=gr.Progress()) -> Dict[gr.component, Dict[Any, Any]]:
+            """ On page load: run the RAG backend startup and pre-configure UI for NIM inference.
+            Falls back to the manual setup tab if the NIM container is not yet reachable. """
+            progress(0.25, desc="Starting RAG Backend...")
+            time.sleep(0.25)
+            progress(0.5, desc="Waiting for Chain Server and Vector DB...")
+            rc = subprocess.call("/bin/bash /project/code/scripts/rag-consolidated.sh", shell=True)
+            progress(0.75, desc="Configuring UI...")
+            time.sleep(0.25)
+            if rc in (0, 2):
+                return {
+                    setup_settings: gr.update(visible=False, interactive=False),
+                    inf_settings: gr.update(visible=True, interactive=True),
+                    vdb_settings: gr.update(visible=True, interactive=True),
+                    submit_btn: gr.update(value="Submit", interactive=True),
+                    hide_all_settings: gr.update(visible=True),
+                    msg: gr.update(interactive=True, placeholder="Enter text and press SUBMIT"),
+                    settings_tabs: gr.update(selected=1),
+                    tabs: gr.update(selected=2),
+                }
+            else:
+                # NIM not ready yet — leave the setup button visible, no error shown
+                return {
+                    setup_settings: gr.update(visible=True, interactive=True),
+                    inf_settings: gr.update(visible=True, interactive=False),
+                    vdb_settings: gr.update(visible=True, interactive=False),
+                    submit_btn: gr.update(value="[NOT READY] Submit", interactive=False),
+                    hide_all_settings: gr.update(visible=False),
+                    msg: gr.update(interactive=False, placeholder="[NOT READY] Start the NIM container, then click Set Up RAG Backend."),
+                    settings_tabs: gr.update(selected=0),
+                    tabs: gr.update(selected=2),
+                }
+
+        page.load(_auto_start, None, [setup_settings, inf_settings, vdb_settings, submit_btn, hide_all_settings, msg, settings_tabs, tabs])
 
     page.queue()
     return page

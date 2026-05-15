@@ -1,8 +1,54 @@
 # Create your compose file. To learn more, please visit
 # https://docs.docker.com/reference/compose-file/
+#
+# Usage:
+#   docker compose --profile llama  up -d   # Llama 3.2 3B  (NIM)
+#   docker compose --profile qwen3  up -d   # Qwen3 4B       (NIM)
+#   docker compose --profile gemma  up -d   # Gemma 3 4B     (Ollama — not on NGC)
+#
+# Only one profile should be active at a time — all services bind port 8000.
+# NIM cache:    /mnt/c/nim-cache    (C:\nim-cache)
+# Ollama cache: /mnt/c/ollama-cache (C:\ollama-cache) — first pull ~3 GB, cached after that
+#
+# First-time Gemma setup (one-off after first `docker compose --profile gemma up -d`):
+#   docker exec local-ollama ollama pull gemma3:4b
+
+x-nim-common: &nim-common
+  runtime: nvidia
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [ gpu ]
+  ports:
+    - "8000:8000"
+  volumes:
+    - type: bind
+      source: /mnt/c/nim-cache
+      target: /opt/nim/.cache/
+  environment:
+    - NGC_API_KEY=${NVIDIA_API_KEY}
+
 services:
-  local-nim:
+  local-nim-llama:
+    profiles: ["llama"]
     image: nvcr.io/nim/meta/llama-3.2-3b-instruct:latest
+    <<: *nim-common
+
+  local-nim-qwen3:
+    profiles: ["qwen3"]
+    image: nvcr.io/nim/qwen/qwen3-4b:latest
+    <<: *nim-common
+
+  # Gemma 3 4B via Ollama (not available as an NGC NIM).
+  # Ollama exposes an OpenAI-compatible /v1 endpoint on port 8000 so the
+  # chain server connects to it identically to a NIM.
+  # Model ID in the UI: gemma3:4b
+  local-ollama:
+    profiles: ["gemma"]
+    image: ollama/ollama:latest
     runtime: nvidia
     deploy:
       resources:
@@ -12,14 +58,14 @@ services:
               count: 1
               capabilities: [ gpu ]
     ports:
-      - "8000:8000"
+      - "8000:11434"
     volumes:
       - type: bind
-        source: /mnt/c/nim-cache
-        target: /opt/nim/.cache/
+        source: /mnt/c/ollama-cache
+        target: /root/.ollama
     environment:
-      - NGC_API_KEY=${NVIDIA_API_KEY}
-      
+      - OLLAMA_HOST=0.0.0.0
+
 networks:
   default:
     name: hybrid-rag
