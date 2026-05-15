@@ -60,4 +60,4 @@ coverage.xml
 .pytest_cache/
 cover/
 
-code/out/
+code/out/variables.env
