@@ -61,3 +61,6 @@ coverage.xml
 cover/
 
 code/out/variables.env
+# Secrets — never commit
+.env
+variables.env
