@@ -293,12 +293,21 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                                elem_id="rag-inputs", scale=1)
 
                                 nim_model_id = gr.Dropdown(
-                                           choices = ["meta/llama-3.2-3b-instruct",
-                                                      "qwen/qwen3-4b",
-                                                      "gemma3:4b"],
+                                           choices = [
+                                               # NIM (docker compose --profile llama)
+                                               "meta/llama-3.2-3b-instruct",
+                                               # Ollama (docker compose --profile gemma)
+                                               "gemma3:4b",
+                                               # Ollama (docker compose --profile qwen3)
+                                               "qwen3:4b",
+                                               # vLLM / HuggingFace (docker compose --profile hf)
+                                               "google/gemma-3-4b-it",
+                                               "Qwen/Qwen3-4B",
+                                               "meta-llama/Llama-3.2-3B-Instruct",
+                                           ],
                                            value = "meta/llama-3.2-3b-instruct",
                                            label = "Model running in microservice.",
-                                           info = "NIM models use org/name format. Ollama models use name:tag (e.g. gemma3:4b).",
+                                           info = "NIM/vLLM: org/name format — Ollama: name:tag format. Must match the active compose profile.",
                                            allow_custom_value = True,
                                            elem_id="rag-inputs")
 
