@@ -199,10 +199,10 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
 
                     # Second tab item consists of all the inference mode settings
                     with gr.TabItem("Inference Settings", id=1, interactive=False, visible=True) as inf_settings:
-                        inference_mode = gr.Radio(["Local System", "Cloud Endpoint", "Self-Hosted Microservice"], 
-                                                  label="Inference Mode", 
-                                                  info=info.inf_mode_info, 
-                                                  value="Cloud Endpoint")
+                        inference_mode = gr.Radio(["Local System", "Cloud Endpoint", "Self-Hosted Microservice"],
+                                                  label="Inference Mode",
+                                                  info=info.inf_mode_info,
+                                                  value="Self-Hosted Microservice")
                         
                         # Depending on the selected inference mode, different settings need to get exposed to the user.
                         with gr.Tabs(selected=1) as tabs:
@@ -283,18 +283,18 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                 remote_nim_msg = gr.Markdown("<br />Enter the details below. Then start chatting!")
                                 
                                 with gr.Row(equal_height=True):
-                                    nim_model_ip = gr.Textbox(value = "hybrid-rag-local-nim-1", 
-                                               label = "Microservice Host", 
-                                               info = "Local microservice OR IP address running a remote microservice", 
+                                    nim_model_ip = gr.Textbox(value = "local-nim",
+                                               label = "Microservice Host",
+                                               info = "Local microservice OR IP address running a remote microservice",
                                                elem_id="rag-inputs", scale=2)
-                                    nim_model_port = gr.Textbox(placeholder = "8000", 
-                                               label = "Port", 
-                                               info = "Optional, (default: 8000)", 
+                                    nim_model_port = gr.Textbox(value = "8000",
+                                               label = "Port",
+                                               info = "Optional, (default: 8000)",
                                                elem_id="rag-inputs", scale=1)
-                                
-                                nim_model_id = gr.Textbox(placeholder = "meta/llama-3.1-8b-instruct", 
-                                           label = "Model running in microservice.", 
-                                           info = "If none specified, defaults to: meta/llama-3.1-8b-instruct", 
+
+                                nim_model_id = gr.Textbox(value = "meta/llama-3.2-3b-instruct",
+                                           label = "Model running in microservice.",
+                                           info = "If none specified, defaults to: meta/llama-3.2-3b-instruct",
                                            elem_id="rag-inputs")
 
                     # Third tab item consists of database and document upload settings
@@ -830,6 +830,8 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                metrics_history,
                                chatbot], [msg, chatbot, context, metrics, metrics_history]
         )
+
+        page.load(_toggle_rag_start, [rag_start_button], [setup_settings, inf_settings, vdb_settings, submit_btn, hide_all_settings, msg])
 
     page.queue()
     return page

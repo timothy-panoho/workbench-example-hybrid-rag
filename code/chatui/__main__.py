@@ -20,6 +20,7 @@ The functions in this module are responsible for bootstrapping then executing th
 
 import argparse
 import os
+import subprocess
 import sys
 
 import uvicorn
@@ -126,6 +127,12 @@ if __name__ == "__main__":
     client = chat_client.ChatClient(
        api_url, config.model_name
     )
+    # Start the RAG backend (Milvus + chain server) in the background so it is
+    # ready by the time the first browser connection arrives. The Gradio page.load()
+    # event in converse.py will call rag-consolidated.sh again on first page load,
+    # which returns immediately (exit 0) if the services are already up.
+    subprocess.Popen(["/bin/bash", "/project/code/scripts/rag-consolidated.sh"])
+
     proxy_prefix = os.environ.get("PROXY_PREFIX")
     blocks = pages.converse.build_page(client)
     blocks.queue(max_size=10)
