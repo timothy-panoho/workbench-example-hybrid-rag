@@ -242,27 +242,29 @@ def llm_chain_streaming(
             prompt = chat_templates.MICROSOFT_CHAT_TEMPLATE.format(context_str=context, query_str=question)
         else:
             prompt = chat_templates.GENERIC_CHAT_TEMPLATE.format(context_str=context, query_str=question)
-        openai.api_key = os.environ.get('NVIDIA_API_KEY') if inference_mode == "cloud" else "xyz"
-        openai.base_url = "https://integrate.api.nvidia.com/v1/" if inference_mode == "cloud" else add_http_prefix(nim_model_ip) + ":" + ("8000" if len(nim_model_port) == 0 else nim_model_port) + "/v1/"
+        _api_key = os.environ.get('NVIDIA_API_KEY') if inference_mode == "cloud" else "xyz"
+        _base_url = "https://integrate.api.nvidia.com/v1/" if inference_mode == "cloud" else add_http_prefix(nim_model_ip) + ":" + ("8000" if len(nim_model_port) == 0 else nim_model_port) + "/v1/"
+        _model = nvcf_model_id if inference_mode == "cloud" else ("meta/llama-3.1-8b-instruct" if len(nim_model_id) == 0 else nim_model_id)
+        _oa = openai.OpenAI(api_key=_api_key, base_url=_base_url, timeout=120.0)
 
         start = time.time()
-        completion = openai.chat.completions.create(
-          model= nvcf_model_id if inference_mode == "cloud" else ("meta/llama-3.1-8b-instruct" if len(nim_model_id) == 0 else nim_model_id),
+        completion = _oa.chat.completions.create(
+          model=_model,
           temperature=temp,
           top_p=top_p,
           # frequency_penalty=freq_pen,   # Some models have yet to roll out support for these params
           # presence_penalty=pres_pen,
           messages=[{"role": "user", "content": prompt}],
-          max_tokens=num_tokens, 
+          max_tokens=num_tokens,
           stream=True,
-        ) if inference_mode == "cloud" and ("microsoft" in nvcf_model_id or "nemotron" in nvcf_model_id) else openai.chat.completions.create(
-          model= nvcf_model_id if inference_mode == "cloud" else ("meta/llama-3.1-8b-instruct" if len(nim_model_id) == 0 else nim_model_id),
+        ) if inference_mode == "cloud" and ("microsoft" in nvcf_model_id or "nemotron" in nvcf_model_id) else _oa.chat.completions.create(
+          model=_model,
           temperature=temp,
           top_p=top_p,
           frequency_penalty=freq_pen,
           presence_penalty=pres_pen,
           messages=[{"role": "user", "content": prompt}],
-          max_tokens=num_tokens, 
+          max_tokens=num_tokens,
           stream=True,
         )
         perf = time.time() - start
@@ -324,14 +326,16 @@ def rag_chain_streaming(prompt: str,
                 yield chunk
             else:
                 break
-    else: 
-        openai.api_key = os.environ.get('NVIDIA_API_KEY') if inference_mode == "cloud" else "xyz"
-        openai.base_url = "https://integrate.api.nvidia.com/v1/" if inference_mode == "cloud" else add_http_prefix(nim_model_ip) + ":" + ("8000" if len(nim_model_port) == 0 else nim_model_port) + "/v1/"
+    else:
+        _api_key = os.environ.get('NVIDIA_API_KEY') if inference_mode == "cloud" else "xyz"
+        _base_url = "https://integrate.api.nvidia.com/v1/" if inference_mode == "cloud" else add_http_prefix(nim_model_ip) + ":" + ("8000" if len(nim_model_port) == 0 else nim_model_port) + "/v1/"
+        _model = nvcf_model_id if inference_mode == "cloud" else ("meta/llama-3.1-8b-instruct" if len(nim_model_id) == 0 else nim_model_id)
+        _oa = openai.OpenAI(api_key=_api_key, base_url=_base_url, timeout=120.0)
         num_nodes = 1 if ((inference_mode == "cloud" and nvcf_model_id == "playground_llama2_13b") or (inference_mode == "cloud" and nvcf_model_id == "playground_llama2_70b")) else 2
-        
+
         nodes = get_doc_retriever(num_nodes=num_nodes).retrieve(prompt)
         docs = []
-        for node in nodes: 
+        for node in nodes:
             docs.append(node.get_text())
         if inference_mode == "cloud" and "llama3" in nvcf_model_id:
             prompt = chat_templates.LLAMA_3_RAG_TEMPLATE.format(context_str=", ".join(docs), query_str=prompt)
@@ -344,17 +348,17 @@ def rag_chain_streaming(prompt: str,
         else:
             prompt = chat_templates.GENERIC_RAG_TEMPLATE.format(context_str=", ".join(docs), query_str=prompt)
         start = time.time()
-        completion = openai.chat.completions.create(
-          model= nvcf_model_id if inference_mode == "cloud" else ("meta/llama-3.1-8b-instruct" if len(nim_model_id) == 0 else nim_model_id),
+        completion = _oa.chat.completions.create(
+          model=_model,
           temperature=temp,
           top_p=top_p,
           # frequency_penalty=freq_pen,   # Some models have yet to roll out support for these params
           # presence_penalty=pres_pen,
           messages=[{"role": "user", "content": prompt}],
-          max_tokens=num_tokens, 
+          max_tokens=num_tokens,
           stream=True,
-        ) if inference_mode == "cloud" and ("microsoft" in nvcf_model_id or "nemotron" in nvcf_model_id) else openai.chat.completions.create(
-          model=nvcf_model_id if inference_mode == "cloud" else ("meta/llama-3.1-8b-instruct" if len(nim_model_id) == 0 else nim_model_id),
+        ) if inference_mode == "cloud" and ("microsoft" in nvcf_model_id or "nemotron" in nvcf_model_id) else _oa.chat.completions.create(
+          model=_model,
           temperature=temp,
           top_p=top_p,
           frequency_penalty=freq_pen,

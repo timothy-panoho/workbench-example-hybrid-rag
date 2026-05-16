@@ -94,7 +94,7 @@ class ChatClient:
         msg = str({"server_url": url, "post_data": data})
         print(f"making inference request - {msg}")
 
-        with requests.post(url, stream=True, json=data, timeout=10) as req:
+        with requests.post(url, stream=True, json=data, timeout=120) as req:
             for chunk in req.iter_content(16):
                 yield chunk.decode("UTF-8")
 

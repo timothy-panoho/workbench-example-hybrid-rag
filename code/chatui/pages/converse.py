@@ -961,7 +961,8 @@ def _stream_predict(
     
             # Generate the output
             chunk_num = 0
-            for chunk in client.predict(question, 
+            ttft = "0"
+            for chunk in client.predict(question,
                                         utils.inference_to_config(inference_mode), 
                                         local_model_id,
                                         utils.cloud_to_config(nvcf_model_id), 

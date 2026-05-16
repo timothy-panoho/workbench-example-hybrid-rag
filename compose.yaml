@@ -32,7 +32,7 @@ x-nim-common: &nim-common
     - "8000:8000"
   volumes:
     - type: bind
-      source: /mnt/c/nim-cache
+      source: C:/nim-cache
       target: /opt/nim/.cache/
   environment:
     - NGC_API_KEY=${NVIDIA_API_KEY}
@@ -48,13 +48,13 @@ x-ollama-common: &ollama-common
             count: 1
             capabilities: [ gpu ]
   ports:
-    - "8000:11434"
+    - "8000:8000"
   volumes:
     - type: bind
-      source: /mnt/c/ollama-cache
+      source: C:/ollama-cache
       target: /root/.ollama
   environment:
-    - OLLAMA_HOST=0.0.0.0
+    - OLLAMA_HOST=0.0.0.0:8000
 
 services:
   # ── NVIDIA NIM ───────────────────────────────────────────────────────────────
@@ -101,7 +101,7 @@ services:
       - "8000:8000"
     volumes:
       - type: bind
-        source: /mnt/c/hf-cache
+        source: C:/hf-cache
         target: /root/.cache/huggingface
     environment:
       - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}

@@ -76,6 +76,22 @@ execution:
             proxy:
                 trim_prefix: true
             url: http://localhost:8080/
+        - name: imageui
+          type: custom
+          class: webapp
+          start_command: cd /project/code/ && PROXY_PREFIX=$PROXY_PREFIX $HOME/.conda/envs/ui-env/bin/python3 -m imageui
+          health_check_command: curl -f "http://localhost:8081/"
+          stop_command: pkill -f "^$HOME/.conda/envs/ui-env/bin/python3 -m imageui"
+          user_msg: ""
+          logfile_path: ""
+          timeout_seconds: 60
+          icon_url: ""
+          webapp_options:
+            autolaunch: false
+            port: "8081"
+            proxy:
+                trim_prefix: true
+            url: http://localhost:8081/
         - name: jupyterlab
           type: jupyterlab
           class: webapp

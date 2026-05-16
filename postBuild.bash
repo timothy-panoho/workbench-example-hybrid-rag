@@ -7,7 +7,7 @@ $HOME/.conda/envs/api-env/bin/pip install setuptools fastapi==0.109.2 uvicorn[st
 
 # Install deps to run the UI in a seperate venv to isolate different components
 conda create --name ui-env -y python=3.10 pip
-$HOME/.conda/envs/ui-env/bin/pip install dataclass_wizard==0.22.2 gradio==4.15.0 jinja2==3.1.2 numpy==1.25.2 protobuf==3.20.3 PyYAML==6.0 uvicorn==0.22.0 torch==2.1.1 tiktoken==0.7.0 regex==2024.5.15 fastapi==0.112.2
+$HOME/.conda/envs/ui-env/bin/pip install dataclass_wizard==0.22.2 gradio==4.15.0 jinja2==3.1.2 numpy==1.25.2 protobuf==3.20.3 PyYAML==6.0 uvicorn==0.22.0 torch==2.1.1 tiktoken==0.7.0 regex==2024.5.15 fastapi==0.112.2 Pillow requests
 $HOME/.conda/envs/ui-env/bin/pip install "huggingface_hub==0.23.4"
 
 sudo -E /opt/conda/bin/pip install anyio==4.3.0 pymilvus==2.3.1 transformers==4.40.0 marshmallow==3.20.1
