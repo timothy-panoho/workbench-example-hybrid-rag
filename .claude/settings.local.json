@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(///wsl$/NVIDIA-Workbench/home/**)",
+      "Read(///wsl$/NVIDIA-Workbench//**)",
+      "PowerShell(wsl -d NVIDIA-Workbench -e bash -c \"cd /home/workbench/nvidia-workbench/timothy-panoho-workbench-example-hybrid-rag && git log --oneline | head -20 && echo '---' && git remote -v && echo '---' && git log --all --full-history -- variables.env\")",
+      "PowerShell(wsl -d NVIDIA-Workbench -e bash -c \"cd /home/workbench/nvidia-workbench/timothy-panoho-workbench-example-hybrid-rag && git filter-branch --force --index-filter 'git rm --cached --ignore-unmatch variables.env' --prune-empty --tag-name-filter cat -- --all 2>&1\")",
+      "PowerShell(wsl -d NVIDIA-Workbench -e bash -c \"cd /home/workbench/nvidia-workbench/timothy-panoho-workbench-example-hybrid-rag && git show 197a3bb:variables.env 2>&1 | head -5 && echo '---' && git ls-tree 197a3bb | grep variables\")",
+      "PowerShell(wsl -d NVIDIA-Workbench -e bash -c \"cd /home/workbench/nvidia-workbench/timothy-panoho-workbench-example-hybrid-rag && git branch -a && echo '---' && git log --oneline --all | wc -l && echo '---' && git log --oneline | wc -l && echo '---' && git cat-file -t 197a3bb && git cat-file -t faa5a34 2>/dev/null || echo 'faa5a34 not found'\")",
+      "PowerShell(wsl -d NVIDIA-Workbench -e bash -c \"cd /home/workbench/nvidia-workbench/timothy-panoho-workbench-example-hybrid-rag && git show 1c0511e:variables.env 2>&1 | head -3 && echo '---BACKUP REFS---' && git for-each-ref refs/original/ --format='%\\(refname\\) %\\(objectname:short\\)' && echo '---WHERE IS 197a3bb---' && git name-rev 197a3bb\")",
+      "PowerShell(wsl -d NVIDIA-Workbench -e bash -c \"cd /home/workbench/nvidia-workbench/timothy-panoho-workbench-example-hybrid-rag && echo '=== Is 197a3bb reachable from origin/main? ===' && git merge-base --is-ancestor 197a3bb origin/main && echo YES || echo NO && echo '=== origin/main second commit content ===' && git show 1c0511e --stat | head -10 && echo '=== Does origin/main have variables.env? ===' && git show origin/main:variables.env 2>&1 | head -3\")",
+      "PowerShell(wsl -d NVIDIA-Workbench -e bash -c \"cd /home/workbench/nvidia-workbench/timothy-panoho-workbench-example-hybrid-rag && git tag -l && echo '=== local vs remote commit count ===' && git log --oneline | wc -l && git log --oneline origin/main | wc -l && echo '=== local HEAD vs origin/main HEAD ===' && git rev-parse HEAD && git rev-parse origin/main\")",
+      "PowerShell(wsl -d NVIDIA-Workbench -e bash -c \"cd /home/workbench/nvidia-workbench/timothy-panoho-workbench-example-hybrid-rag && git reflog expire --expire=now --all && git gc --prune=now 2>&1\")"
+    ]
+  }
+}

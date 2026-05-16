@@ -1,9 +1,90 @@
 # Create your compose file. To learn more, please visit
 # https://docs.docker.com/reference/compose-file/
+#
+# Usage (only one profile at a time — all bind port 8000):
+#   docker compose --profile llama  up -d   # Llama 3.2 3B     (NVIDIA NIM)
+#   docker compose --profile gemma  up -d   # Gemma 3 4B IT    (Ollama)
+#   docker compose --profile qwen3  up -d   # Qwen3 4B          (Ollama)
+#   docker compose --profile hf     up -d   # any HF model      (vLLM — edit command: below)
+#
+# Model caches (Docker named volumes — survive container restarts automatically):
+#   docker volume ls                         # list all volumes
+#   docker volume inspect hybrid-rag_ollama-cache  # inspect a volume
+#
+# First-time Ollama model pull (one-off per model):
+#   docker exec local-gemma ollama pull gemma3:4b
+#   docker exec local-qwen3 ollama pull qwen3:4b
+#
+# HF token for the vLLM service — add to your .env file:
+#   HUGGING_FACE_HUB_TOKEN=hf_...
+
+x-nim-common: &nim-common
+  runtime: nvidia
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [ gpu ]
+  ports:
+    - "8000:8000"
+  volumes:
+    - nim-cache:/opt/nim/.cache/
+  environment:
+    - NGC_API_KEY=${NVIDIA_API_KEY}
+
+x-ollama-common: &ollama-common
+  image: ollama/ollama:latest
+  runtime: nvidia
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [ gpu ]
+  ports:
+    - "8000:8000"
+  volumes:
+    - ollama-cache:/root/.ollama
+  environment:
+    - OLLAMA_HOST=0.0.0.0:8000
+
 services:
-  local-nim:
+  # ── NVIDIA NIM ───────────────────────────────────────────────────────────────
+  local-nim-llama:
+    profiles: ["llama"]
     image: nvcr.io/nim/meta/llama-3.2-3b-instruct:latest
+    <<: *nim-common
+
+  # ── Ollama (models not available as NIMs) ────────────────────────────────────
+  # Service is named after the model, not the runtime.
+  # After first `up -d`, run: docker exec local-gemma ollama pull gemma3:4b
+  local-gemma:
+    profiles: ["gemma"]
+    container_name: local-gemma
+    <<: *ollama-common
+
+  # After first `up -d`, run: docker exec local-qwen3 ollama pull qwen3:4b
+  local-qwen3:
+    profiles: ["qwen3"]
+    container_name: local-qwen3
+    <<: *ollama-common
+
+  # ── vLLM — direct HuggingFace model loading ──────────────────────────────────
+  # Requires HUGGING_FACE_HUB_TOKEN in .env for gated models (Gemma, Llama, etc.)
+  # Change --model to any HF model ID. Examples:
+  #   google/gemma-3-4b-it          (~8 GB VRAM, fits 4090 easily)
+  #   google/gemma-3-12b-it         (~24 GB VRAM, tight on 4090)
+  #   Qwen/Qwen3-4B                 (~8 GB VRAM)
+  #   meta-llama/Llama-3.2-3B-Instruct (~6 GB VRAM)
+  local-hf:
+    profiles: ["hf"]
+    container_name: local-hf
+    image: vllm/vllm-openai:latest
     runtime: nvidia
+    ipc: host
     deploy:
       resources:
         reservations:
@@ -14,12 +95,16 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - type: bind
-        source: /mnt/c/nim-cache
-        target: /opt/nim/.cache/
+      - hf-cache:/root/.cache/huggingface
     environment:
-      - NGC_API_KEY=${NVIDIA_API_KEY}
-      
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
+    command: ["--model", "${HF_MODEL_ID:-google/gemma-3-4b-it}", "--dtype", "bfloat16", "--max-model-len", "${HF_MAX_LEN:-8192}"]
+
+volumes:
+  nim-cache:
+  ollama-cache:
+  hf-cache:
+
 networks:
   default:
     name: hybrid-rag

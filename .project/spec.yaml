@@ -76,6 +76,22 @@ execution:
             proxy:
                 trim_prefix: true
             url: http://localhost:8080/
+        - name: imageui
+          type: custom
+          class: webapp
+          start_command: cd /project/code/ && PROXY_PREFIX=$PROXY_PREFIX $HOME/.conda/envs/ui-env/bin/python3 -m imageui
+          health_check_command: curl -f "http://localhost:8081/"
+          stop_command: pkill -f "^$HOME/.conda/envs/ui-env/bin/python3 -m imageui"
+          user_msg: ""
+          logfile_path: ""
+          timeout_seconds: 60
+          icon_url: ""
+          webapp_options:
+            autolaunch: false
+            port: "8081"
+            proxy:
+                trim_prefix: true
+            url: http://localhost:8081/
         - name: jupyterlab
           type: jupyterlab
           class: webapp
@@ -104,11 +120,13 @@ execution:
           icon_url: ""
     resources:
         gpu:
-            requested: 1
+            requested: 0
         sharedMemoryMB: 4096
     secrets:
         - variable: NVIDIA_API_KEY
           description: NVIDIA API Key for Cloud Inference (starts with "nvapi-")
+        - variable: HUGGING_FACE_HUB_TOKEN
+          description: HuggingFace token for downloading gated models (starts with "hf_")
     mounts:
         - type: project
           target: /project/
@@ -126,3 +144,7 @@ execution:
           target: /nvwb-shared-volume/
           description: ""
           options: volumeName=nvwb-shared-volume
+        - type: bind
+          target: /var/run/docker.sock
+          description: Docker socket so the container can manage local model containers
+          options: rw

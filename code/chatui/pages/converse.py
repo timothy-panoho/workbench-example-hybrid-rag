@@ -22,6 +22,7 @@ from pathlib import Path
 
 import gradio as gr
 import json
+import requests
 import shutil
 import os
 import subprocess
@@ -199,13 +200,13 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
 
                     # Second tab item consists of all the inference mode settings
                     with gr.TabItem("Inference Settings", id=1, interactive=False, visible=True) as inf_settings:
-                        inference_mode = gr.Radio(["Local System", "Cloud Endpoint", "Self-Hosted Microservice"], 
-                                                  label="Inference Mode", 
-                                                  info=info.inf_mode_info, 
-                                                  value="Cloud Endpoint")
+                        inference_mode = gr.Radio(["Local System", "Cloud Endpoint", "Self-Hosted Microservice"],
+                                                  label="Inference Mode",
+                                                  info=info.inf_mode_info,
+                                                  value="Self-Hosted Microservice")
                         
                         # Depending on the selected inference mode, different settings need to get exposed to the user.
-                        with gr.Tabs(selected=1) as tabs:
+                        with gr.Tabs(selected=2) as tabs:
 
                             # Inference settings for local TGI inference server
                             with gr.TabItem("Local System", id=0, interactive=False, visible=False) as local:
@@ -279,23 +280,98 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                     gr.Markdown(info.nim_info)
                                 with gr.Accordion("Troubleshooting", open=False, elem_id="accordion"):
                                     gr.Markdown(info.nim_trouble)
-        
+
+                                with gr.Accordion("Local Model Launcher", open=True, elem_id="accordion"):
+                                    gr.Markdown(
+                                        "Start a local model container without leaving Workbench. "
+                                        "Picks the right host, port, and model ID automatically."
+                                    )
+                                    with gr.Row():
+                                        launch_profile_dd = gr.Dropdown(
+                                            choices=[
+                                                "gemma  — Ollama  (gemma3:4b)",
+                                                "qwen3  — Ollama  (qwen3:4b)",
+                                                "llama  — NIM     (meta/llama-3.2-3b-instruct)",
+                                                "hf     — vLLM    (HuggingFace — pick model below)",
+                                            ],
+                                            value="gemma  — Ollama  (gemma3:4b)",
+                                            label="Model profile",
+                                            scale=3,
+                                        )
+                                        launch_model_btn = gr.Button("▶ Launch", variant="primary", scale=1)
+                                        stop_model_btn = gr.Button("⏹ Stop", variant="secondary", scale=1)
+                                    hf_model_input = gr.Textbox(
+                                        value="google/gemma-3-4b-it",
+                                        label="HuggingFace Model ID",
+                                        info="Any model from huggingface.co/models — requires HUGGING_FACE_HUB_TOKEN for gated models",
+                                        placeholder="e.g. google/gemma-3-4b-it  |  Qwen/Qwen3-4B  |  meta-llama/Llama-3.2-3B-Instruct",
+                                        visible=False,
+                                        interactive=True,
+                                    )
+                                    launch_status = gr.Textbox(
+                                        value="",
+                                        label="Launcher status",
+                                        interactive=False,
+                                        placeholder="No model started yet — click Launch to begin.",
+                                    )
+                                    with gr.Accordion("Container Logs", open=False, elem_id="accordion"):
+                                        gr.Markdown("Live tail of the running model container — useful for tracking HuggingFace download progress.")
+                                        with gr.Row():
+                                            refresh_logs_btn = gr.Button("🔄 Refresh Logs", size="sm", scale=1)
+                                            log_container_dd = gr.Dropdown(
+                                                choices=["local-gemma", "local-qwen3", "local-nim-llama", "local-hf"],
+                                                value="local-hf",
+                                                label="Container",
+                                                scale=2,
+                                            )
+                                        log_output = gr.Textbox(
+                                            value="",
+                                            label="",
+                                            interactive=False,
+                                            lines=12,
+                                            max_lines=12,
+                                            show_copy_button=True,
+                                        )
+
                                 remote_nim_msg = gr.Markdown("<br />Enter the details below. Then start chatting!")
                                 
                                 with gr.Row(equal_height=True):
-                                    nim_model_ip = gr.Textbox(value = "hybrid-rag-local-nim-1", 
-                                               label = "Microservice Host", 
-                                               info = "Local microservice OR IP address running a remote microservice", 
+                                    nim_model_ip = gr.Textbox(value = "localhost",
+                                               label = "Microservice Host",
+                                               info = "localhost, a Docker container name, or a remote IP address",
                                                elem_id="rag-inputs", scale=2)
-                                    nim_model_port = gr.Textbox(placeholder = "8000", 
-                                               label = "Port", 
-                                               info = "Optional, (default: 8000)", 
+                                    nim_model_port = gr.Textbox(value = "8000",
+                                               label = "Port",
+                                               info = "Optional, (default: 8000)",
                                                elem_id="rag-inputs", scale=1)
-                                
-                                nim_model_id = gr.Textbox(placeholder = "meta/llama-3.1-8b-instruct", 
-                                           label = "Model running in microservice.", 
-                                           info = "If none specified, defaults to: meta/llama-3.1-8b-instruct", 
+
+                                nim_model_id = gr.Dropdown(
+                                           choices = [
+                                               # NIM (docker compose --profile llama)
+                                               "meta/llama-3.2-3b-instruct",
+                                               # Ollama (docker compose --profile gemma)
+                                               "gemma3:4b",
+                                               # Ollama (docker compose --profile qwen3)
+                                               "qwen3:4b",
+                                               # vLLM / HuggingFace (docker compose --profile hf)
+                                               "google/gemma-3-4b-it",
+                                               "Qwen/Qwen3-4B",
+                                               "meta-llama/Llama-3.2-3B-Instruct",
+                                           ],
+                                           value = "meta/llama-3.2-3b-instruct",
+                                           label = "Model running in microservice.",
+                                           info = "NIM/vLLM: org/name format — Ollama: name:tag format. Must match the active compose profile.",
+                                           allow_custom_value = True,
                                            elem_id="rag-inputs")
+                                with gr.Row():
+                                    fetch_models_btn = gr.Button(
+                                        "🔍 Fetch Models", size="sm", scale=1, variant="secondary"
+                                    )
+                                    fetch_models_status = gr.Textbox(
+                                        value="", show_label=False, interactive=False,
+                                        scale=3, max_lines=1,
+                                        placeholder="← click to load models from the running microservice",
+                                    )
 
                     # Third tab item consists of database and document upload settings
                     with gr.TabItem("Upload Documents Here", id=2, interactive=False, visible=True) as vdb_settings:
@@ -763,32 +839,35 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
             time.sleep(0.25)
             progress(0.5, desc="Setting Up RAG Backend (one-time process, may take a few moments)")
             rc = subprocess.call("/bin/bash /project/code/scripts/rag-consolidated.sh ", shell=True)
-            if rc == 2:
-                gr.Info("Inferencing is ready, but the Vector DB may still be spinning up. This can take a few moments to complete. ")
-                visibility = [False, True, True, True]
-                interactive = [False, True, True, False]
-                submit_value="[NOT READY] Submit"
-            elif rc == 0:
-                visibility = [False, True, True, True]
-                interactive = [False, True, True, False]
-                submit_value="[NOT READY] Submit"
-            else:
-                gr.Warning("Something went wrong. Check the Output in AI Workbench, or try again. ")
-                visibility = [True, True, True, False]
-                interactive = [False, False, False, False]
-                submit_value="[NOT READY] Submit"
             progress(0.75, desc="Cleaning Up")
             time.sleep(0.25)
-            return {
-                setup_settings: gr.update(visible=visibility[0], interactive=interactive[0]), 
-                inf_settings: gr.update(visible=visibility[1], interactive=interactive[1]),
-                vdb_settings: gr.update(visible=visibility[2], interactive=interactive[2]),
-                submit_btn: gr.update(value=submit_value, interactive=interactive[3]),
-                hide_all_settings: gr.update(visible=visibility[3]),
-                msg: gr.update(interactive=True, placeholder="[NOT READY] Select a model OR Select a Different Inference Mode." if rc != 1 else "Enter text and press SUBMIT"),
-            }
-        
-        rag_start_button.click(_toggle_rag_start, [rag_start_button], [setup_settings, inf_settings, vdb_settings, submit_btn, hide_all_settings, msg])
+            if rc in (0, 2):
+                if rc == 2:
+                    gr.Info("Chain server is ready. The Vector DB may still be warming up — your first query may be slow.")
+                return {
+                    setup_settings: gr.update(visible=False, interactive=False),
+                    inf_settings: gr.update(visible=True, interactive=True),
+                    vdb_settings: gr.update(visible=True, interactive=True),
+                    submit_btn: gr.update(value="Submit", interactive=True),
+                    hide_all_settings: gr.update(visible=True),
+                    msg: gr.update(interactive=True, placeholder="Enter text and press SUBMIT"),
+                    settings_tabs: gr.update(selected=1),
+                    tabs: gr.update(selected=2),
+                }
+            else:
+                gr.Warning("RAG backend failed to start. Ensure the NIM container is running, then try again.")
+                return {
+                    setup_settings: gr.update(visible=True, interactive=True),
+                    inf_settings: gr.update(visible=True, interactive=False),
+                    vdb_settings: gr.update(visible=True, interactive=False),
+                    submit_btn: gr.update(value="[NOT READY] Submit", interactive=False),
+                    hide_all_settings: gr.update(visible=False),
+                    msg: gr.update(interactive=False, placeholder="[NOT READY] Ensure the NIM container is running, then click Set Up RAG Backend."),
+                    settings_tabs: gr.update(selected=0),
+                    tabs: gr.update(selected=2),
+                }
+
+        rag_start_button.click(_toggle_rag_start, [rag_start_button], [setup_settings, inf_settings, vdb_settings, submit_btn, hide_all_settings, msg, settings_tabs, tabs])
 
         # form actions
         _my_build_stream = functools.partial(_stream_predict, client)
@@ -830,6 +909,158 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                metrics_history,
                                chatbot], [msg, chatbot, context, metrics, metrics_history]
         )
+
+        def _auto_start(progress=gr.Progress()) -> Dict[gr.component, Dict[Any, Any]]:
+            """ On page load: run the RAG backend startup and pre-configure UI for NIM inference.
+            Falls back to the manual setup tab if the NIM container is not yet reachable. """
+            progress(0.25, desc="Starting RAG Backend...")
+            time.sleep(0.25)
+            progress(0.5, desc="Waiting for Chain Server and Vector DB...")
+            rc = subprocess.call("/bin/bash /project/code/scripts/rag-consolidated.sh", shell=True)
+            progress(0.75, desc="Configuring UI...")
+            time.sleep(0.25)
+            if rc in (0, 2):
+                return {
+                    setup_settings: gr.update(visible=False, interactive=False),
+                    inf_settings: gr.update(visible=True, interactive=True),
+                    vdb_settings: gr.update(visible=True, interactive=True),
+                    submit_btn: gr.update(value="Submit", interactive=True),
+                    hide_all_settings: gr.update(visible=True),
+                    msg: gr.update(interactive=True, placeholder="Enter text and press SUBMIT"),
+                    settings_tabs: gr.update(selected=1),
+                    tabs: gr.update(selected=2),
+                }
+            else:
+                # NIM not ready yet — leave the setup button visible, no error shown
+                return {
+                    setup_settings: gr.update(visible=True, interactive=True),
+                    inf_settings: gr.update(visible=True, interactive=False),
+                    vdb_settings: gr.update(visible=True, interactive=False),
+                    submit_btn: gr.update(value="[NOT READY] Submit", interactive=False),
+                    hide_all_settings: gr.update(visible=False),
+                    msg: gr.update(interactive=False, placeholder="[NOT READY] Start the NIM container, then click Set Up RAG Backend."),
+                    settings_tabs: gr.update(selected=0),
+                    tabs: gr.update(selected=2),
+                }
+
+        page.load(_auto_start, None, [setup_settings, inf_settings, vdb_settings, submit_btn, hide_all_settings, msg, settings_tabs, tabs])
+
+        # ── Local Model Launcher ──────────────────────────────────────────────
+        _PROFILE_MAP = {
+            "gemma  — Ollama  (gemma3:4b)":                      ("gemma", "local-gemma",     "8000", "gemma3:4b"),
+            "qwen3  — Ollama  (qwen3:4b)":                       ("qwen3", "local-qwen3",     "8000", "qwen3:4b"),
+            "llama  — NIM     (meta/llama-3.2-3b-instruct)":     ("llama", "local-nim-llama", "8000", "meta/llama-3.2-3b-instruct"),
+            "hf     — vLLM    (HuggingFace — pick model below)": ("hf",    "local-hf",        "8000", None),
+        }
+
+        def _on_profile_change(profile_label):
+            """Show the HF model ID textbox only for the vLLM/HF profile."""
+            is_hf = _PROFILE_MAP.get(profile_label, ("",))[0] == "hf"
+            return gr.update(visible=is_hf)
+
+        def _launch_model(profile_label, hf_model_id):
+            profile, host, port, fixed_model = _PROFILE_MAP[profile_label]
+            model = hf_model_id.strip() if profile == "hf" else fixed_model
+
+            cmd = ["/bin/bash", "/project/code/scripts/launch-model.sh", profile]
+            if profile == "hf" and model:
+                cmd.append(model)
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+            if result.returncode == 0:
+                try:
+                    with open("/project/.model-profile", "w") as _pf:
+                        _pf.write(profile)
+                except Exception:
+                    pass
+                display_model = model or "unknown"
+                status = f"✅ {host} running — model: {display_model}"
+                if profile == "hf":
+                    status += "\n⏳ First run downloads the model — open Container Logs and click 🔄 Refresh to track progress."
+                return (
+                    gr.update(value=status),
+                    gr.update(value=host),
+                    gr.update(value=port),
+                    gr.update(value=display_model),
+                )
+            err = (result.stderr or result.stdout or "unknown error")[:300]
+            return gr.update(value=f"❌ {err}"), gr.update(), gr.update(), gr.update()
+
+        def _stop_model():
+            result = subprocess.run(
+                ["/bin/bash", "/project/code/scripts/launch-model.sh", "stop"],
+                capture_output=True, text=True, timeout=60,
+            )
+            if result.returncode == 0:
+                return gr.update(value="⏹ All local model containers stopped.")
+            err = (result.stderr or result.stdout or "unknown error")[:200]
+            return gr.update(value=f"❌ {err}")
+
+        def _refresh_logs(container_name):
+            """Tail the last 60 lines from the selected model container."""
+            result = subprocess.run(
+                ["docker", "logs", "--tail", "60", container_name],
+                capture_output=True, text=True, timeout=15,
+            )
+            output = (result.stdout or "") + (result.stderr or "")
+            if not output.strip():
+                return gr.update(value=f"(no output yet from '{container_name}' — is it running?)")
+            return gr.update(value=output.strip())
+
+        launch_profile_dd.change(
+            _on_profile_change,
+            inputs=[launch_profile_dd],
+            outputs=[hf_model_input],
+        )
+        launch_model_btn.click(
+            _launch_model,
+            inputs=[launch_profile_dd, hf_model_input],
+            outputs=[launch_status, nim_model_ip, nim_model_port, nim_model_id],
+        )
+        stop_model_btn.click(
+            _stop_model,
+            inputs=[],
+            outputs=[launch_status],
+        )
+        refresh_logs_btn.click(
+            _refresh_logs,
+            inputs=[log_container_dd],
+            outputs=[log_output],
+        )
+
+        # ── Fetch Models from running microservice ────────────────────────────
+        def _fetch_models(host: str, port: str):
+            """Call GET /v1/models on the configured microservice and populate the dropdown."""
+            host = (host or "").strip()
+            port = (port or "8000").strip()
+            if not host:
+                return gr.update(), "❌ Enter a Microservice Host first."
+            url = f"http://{host}:{port}/v1/models"
+            try:
+                resp = requests.get(url, timeout=5)
+                resp.raise_for_status()
+                data = resp.json()
+                ids = [m["id"] for m in data.get("data", [])]
+                if not ids:
+                    return gr.update(choices=[], value=None), f"⚠️ No models found at {url}"
+                return (
+                    gr.update(choices=ids, value=ids[0]),
+                    f"✅ {len(ids)} model(s) loaded from {host}:{port}",
+                )
+            except requests.exceptions.ConnectionError:
+                return gr.update(), f"❌ Cannot connect to {url}"
+            except requests.exceptions.Timeout:
+                return gr.update(), f"❌ Timed out connecting to {url}"
+            except Exception as exc:
+                return gr.update(), f"❌ {str(exc)[:200]}"
+
+        _fetch_outputs = [nim_model_id, fetch_models_status]
+        _fetch_inputs  = [nim_model_ip, nim_model_port]
+
+        fetch_models_btn.click(_fetch_models, inputs=_fetch_inputs, outputs=_fetch_outputs)
+        # Also trigger when user presses Enter in either the host or port field
+        nim_model_ip.submit(_fetch_models,   inputs=_fetch_inputs, outputs=_fetch_outputs)
+        nim_model_port.submit(_fetch_models, inputs=_fetch_inputs, outputs=_fetch_outputs)
 
     page.queue()
     return page
@@ -909,7 +1140,8 @@ def _stream_predict(
     
             # Generate the output
             chunk_num = 0
-            for chunk in client.predict(question, 
+            ttft = "0"
+            for chunk in client.predict(question,
                                         utils.inference_to_config(inference_mode), 
                                         local_model_id,
                                         utils.cloud_to_config(nvcf_model_id), 
