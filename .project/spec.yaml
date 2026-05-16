@@ -142,3 +142,8 @@ execution:
           target: /nvwb-shared-volume/
           description: ""
           options: volumeName=nvwb-shared-volume
+        - type: bind
+          source: /var/run/docker.sock
+          target: /var/run/docker.sock
+          description: Docker socket so the container can manage local model containers
+          options: rw

@@ -7,10 +7,9 @@
 #   docker compose --profile qwen3  up -d   # Qwen3 4B          (Ollama)
 #   docker compose --profile hf     up -d   # any HF model      (vLLM — edit command: below)
 #
-# Model caches (survive container restarts):
-#   NIM:    C:\nim-cache      (/mnt/c/nim-cache)
-#   Ollama: C:\ollama-cache   (/mnt/c/ollama-cache)
-#   HF/vLLM: C:\hf-cache     (/mnt/c/hf-cache)
+# Model caches (Docker named volumes — survive container restarts automatically):
+#   docker volume ls                         # list all volumes
+#   docker volume inspect hybrid-rag_ollama-cache  # inspect a volume
 #
 # First-time Ollama model pull (one-off per model):
 #   docker exec local-gemma ollama pull gemma3:4b
@@ -31,9 +30,7 @@ x-nim-common: &nim-common
   ports:
     - "8000:8000"
   volumes:
-    - type: bind
-      source: C:/nim-cache
-      target: /opt/nim/.cache/
+    - nim-cache:/opt/nim/.cache/
   environment:
     - NGC_API_KEY=${NVIDIA_API_KEY}
 
@@ -50,9 +47,7 @@ x-ollama-common: &ollama-common
   ports:
     - "8000:8000"
   volumes:
-    - type: bind
-      source: C:/ollama-cache
-      target: /root/.ollama
+    - ollama-cache:/root/.ollama
   environment:
     - OLLAMA_HOST=0.0.0.0:8000
 
@@ -100,12 +95,15 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - type: bind
-        source: C:/hf-cache
-        target: /root/.cache/huggingface
+      - hf-cache:/root/.cache/huggingface
     environment:
       - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
     command: ["--model", "google/gemma-3-4b-it", "--dtype", "bfloat16", "--max-model-len", "8192"]
+
+volumes:
+  nim-cache:
+  ollama-cache:
+  hf-cache:
 
 networks:
   default:

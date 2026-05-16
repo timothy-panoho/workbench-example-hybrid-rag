@@ -133,6 +133,15 @@ if __name__ == "__main__":
     # which returns immediately (exit 0) if the services are already up.
     subprocess.Popen(["/bin/bash", "/project/code/scripts/rag-consolidated.sh"])
 
+    # Ensure this container is on the hybrid-rag Docker network so it can reach
+    # local model containers (local-gemma, local-nim-llama, etc.).
+    # Idempotent — safe if already connected or if Docker is not yet installed.
+    subprocess.Popen(
+        ["/bin/bash", "-c",
+         "command -v docker >/dev/null 2>&1 && "
+         "docker network connect hybrid-rag project-hybrid-rag 2>/dev/null || true"]
+    )
+
     proxy_prefix = os.environ.get("PROXY_PREFIX")
     blocks = pages.converse.build_page(client)
     blocks.queue(max_size=10)

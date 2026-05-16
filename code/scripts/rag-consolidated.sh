@@ -1,51 +1,78 @@
 #!/bin/bash
 
-# Check if gedit is running
-# -x flag only match processes whose name (or command line if -f is
-# specified) exactly match the pattern. 
+CHAIN_SERVER_CMD="$HOME/.conda/envs/api-env/bin/python -m uvicorn chain_server.server:app --port=8000 --host=0.0.0.0"
+PROFILE_FILE="/project/.model-profile"
 
-if pgrep -x "milvus" > /dev/null
-then
-    # Check if the status is not 200
-    if [[ $(curl -o /dev/null -s -w "%{http_code}" --max-time 3 "http://localhost:8000/health") -ne 200 ]]; then
-        echo "Error: 'http://localhost:8000/health' returned HTTP code $(curl -o /dev/null -s -w "%{http_code}" --max-time 3 "http://localhost:8000/health")"
-        exit 1
-    fi
+# ── Helpers ────────────────────────────────────────────────────────────────────
 
-    # Check if the status is not 200
-    if [[ $(curl -o /dev/null -s -w "%{http_code}" --max-time 3 "http://localhost:19530/v1/vector/collections") -ne 200 ]]; then
-        echo "Error: 'http://localhost:19530/v1/vector/collections' returned HTTP code $(curl -o /dev/null -s -w "%{http_code}" --max-time 3 'http://localhost:19530/v1/vector/collections')"
-        exit 2
-    fi
-    
-    echo "All URLs returned HTTP code 200"
-    exit 0
-else
-    # Start milvus
-    echo "Starting Milvus"
-    $HOME/.local/bin/milvus-server --data /mnt/milvus/ &
-    
-    # Start API
-    echo "Starting API"
-    cd /project/code/ && $HOME/.conda/envs/api-env/bin/python -m uvicorn chain_server.server:app --port=8000 --host='0.0.0.0' &
+start_chain_server() {
+    echo "Starting chain server..."
+    cd /project/code/ && $CHAIN_SERVER_CMD &
 
-    # Wait for service to be reachable.
     ATTEMPTS=0
     MAX_ATTEMPTS=30
-    
-    while [ $(curl -o /dev/null -s -w "%{http_code}" "http://localhost:8000/health") -ne 200 ]; 
-    do 
-      ATTEMPTS=$(($ATTEMPTS+1))
-      if [ ${ATTEMPTS} -eq ${MAX_ATTEMPTS} ]
-      then
-        echo "Max attempts reached: $MAX_ATTEMPTS. Server may have timed out. Stop the container and try again. "
-        exit 1
-      fi
-      
-      echo "Polling inference server. Awaiting status 200; trying again in 5s. "
-      sleep 5
-    done 
-    
+    while [ "$(curl -o /dev/null -s -w "%{http_code}" "http://localhost:8000/health")" != "200" ]; do
+        ATTEMPTS=$((ATTEMPTS+1))
+        if [ "$ATTEMPTS" -eq "$MAX_ATTEMPTS" ]; then
+            echo "Max attempts reached ($MAX_ATTEMPTS). Chain server failed to start."
+            exit 1
+        fi
+        echo "Polling chain server. Awaiting status 200; trying again in 5s."
+        sleep 5
+    done
+    echo "Chain server is up."
+}
+
+auto_launch_model() {
+    # If Docker is available and a profile was previously chosen, restart it.
+    if ! command -v docker >/dev/null 2>&1; then
+        return
+    fi
+    if [ ! -f "$PROFILE_FILE" ]; then
+        return
+    fi
+    LAST_PROFILE=$(cat "$PROFILE_FILE")
+    if [ -z "$LAST_PROFILE" ]; then
+        return
+    fi
+    echo "Auto-launching local model profile: $LAST_PROFILE"
+    /project/code/scripts/launch-model.sh "$LAST_PROFILE" &
+}
+
+# ── Main logic ─────────────────────────────────────────────────────────────────
+
+if pgrep -x "milvus" > /dev/null; then
+
+    # Milvus already running — make sure chain server is also up
+    if [[ "$(curl -o /dev/null -s -w "%{http_code}" --max-time 3 "http://localhost:8000/health")" != "200" ]]; then
+        echo "Chain server not responding — restarting..."
+        start_chain_server
+    fi
+
+    # Check Milvus REST API
+    if [[ "$(curl -o /dev/null -s -w "%{http_code}" --max-time 3 "http://localhost:19530/v1/vector/collections")" != "200" ]]; then
+        echo "Error: Milvus REST API not responding."
+        exit 2
+    fi
+
+    # Auto-launch the last-used local model (idempotent — skipped if already running)
+    auto_launch_model
+
+    echo "All services running."
+    exit 0
+
+else
+
+    # Fresh start — bring up Milvus, chain server, and local model
+    echo "Starting Milvus..."
+    $HOME/.local/bin/milvus-server --data /mnt/milvus/ &
+
+    start_chain_server
+
+    # Auto-launch the last-used local model
+    auto_launch_model
+
     echo "Service reachable. Happy chatting!"
     exit 2
+
 fi

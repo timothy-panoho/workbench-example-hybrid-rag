@@ -279,7 +279,33 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                     gr.Markdown(info.nim_info)
                                 with gr.Accordion("Troubleshooting", open=False, elem_id="accordion"):
                                     gr.Markdown(info.nim_trouble)
-        
+
+                                with gr.Accordion("Local Model Launcher", open=True, elem_id="accordion"):
+                                    gr.Markdown(
+                                        "Start a local model container without leaving Workbench. "
+                                        "Picks the right host, port, and model ID automatically."
+                                    )
+                                    with gr.Row():
+                                        launch_profile_dd = gr.Dropdown(
+                                            choices=[
+                                                "gemma  — Ollama  (gemma3:4b)",
+                                                "qwen3  — Ollama  (qwen3:4b)",
+                                                "llama  — NIM     (meta/llama-3.2-3b-instruct)",
+                                                "hf     — vLLM    (google/gemma-3-4b-it)",
+                                            ],
+                                            value="gemma  — Ollama  (gemma3:4b)",
+                                            label="Model profile",
+                                            scale=3,
+                                        )
+                                        launch_model_btn = gr.Button("▶ Launch", variant="primary", scale=1)
+                                        stop_model_btn = gr.Button("⏹ Stop", variant="secondary", scale=1)
+                                    launch_status = gr.Textbox(
+                                        value="",
+                                        label="Launcher status",
+                                        interactive=False,
+                                        placeholder="No model started yet — click Launch to begin.",
+                                    )
+
                                 remote_nim_msg = gr.Markdown("<br />Enter the details below. Then start chatting!")
                                 
                                 with gr.Row(equal_height=True):
@@ -882,6 +908,57 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                 }
 
         page.load(_auto_start, None, [setup_settings, inf_settings, vdb_settings, submit_btn, hide_all_settings, msg, settings_tabs, tabs])
+
+        # ── Local Model Launcher ──────────────────────────────────────────────
+        _PROFILE_MAP = {
+            "gemma  — Ollama  (gemma3:4b)":                 ("gemma",  "local-gemma",      "8000", "gemma3:4b"),
+            "qwen3  — Ollama  (qwen3:4b)":                  ("qwen3",  "local-qwen3",       "8000", "qwen3:4b"),
+            "llama  — NIM     (meta/llama-3.2-3b-instruct)": ("llama",  "local-nim-llama",   "8000", "meta/llama-3.2-3b-instruct"),
+            "hf     — vLLM    (google/gemma-3-4b-it)":      ("hf",     "local-hf",          "8000", "google/gemma-3-4b-it"),
+        }
+
+        def _launch_model(profile_label):
+            profile, host, port, model = _PROFILE_MAP[profile_label]
+            result = subprocess.run(
+                ["/bin/bash", "/project/code/scripts/launch-model.sh", profile],
+                capture_output=True, text=True, timeout=120,
+            )
+            if result.returncode == 0:
+                # Persist the chosen profile so startup can auto-launch it next time
+                try:
+                    with open("/project/.model-profile", "w") as _pf:
+                        _pf.write(profile)
+                except Exception:
+                    pass
+                return (
+                    gr.update(value=f"✅ {host} running — model: {model}"),
+                    gr.update(value=host),
+                    gr.update(value=port),
+                    gr.update(value=model),
+                )
+            err = (result.stderr or result.stdout or "unknown error")[:300]
+            return gr.update(value=f"❌ {err}"), gr.update(), gr.update(), gr.update()
+
+        def _stop_model():
+            result = subprocess.run(
+                ["/bin/bash", "/project/code/scripts/launch-model.sh", "stop"],
+                capture_output=True, text=True, timeout=60,
+            )
+            if result.returncode == 0:
+                return gr.update(value="⏹ All local model containers stopped.")
+            err = (result.stderr or result.stdout or "unknown error")[:200]
+            return gr.update(value=f"❌ {err}")
+
+        launch_model_btn.click(
+            _launch_model,
+            inputs=[launch_profile_dd],
+            outputs=[launch_status, nim_model_ip, nim_model_port, nim_model_id],
+        )
+        stop_model_btn.click(
+            _stop_model,
+            inputs=[],
+            outputs=[launch_status],
+        )
 
     page.queue()
     return page
