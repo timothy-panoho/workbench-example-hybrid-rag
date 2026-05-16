@@ -21,23 +21,35 @@ sudo -E curl -s https://packagecloud.io/install/repositories/github/git-lfs/scri
 sudo -E apt-get install git-lfs
 $HOME/.conda/envs/api-env/bin/pip install 'setuptools==69.5.1' --quiet
 
-# Install Docker CLI (client only — daemon runs on the host, socket is shared by Workbench)
-# Installed to user home so no sudo is required
-DOCKER_VERSION="27.5.1"
-mkdir -p "$HOME/.local/bin"
-curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_VERSION}.tgz" \
-  | tar -xz --strip-components=1 -C "$HOME/.local/bin" docker/docker
+# ── Docker CLI (client only — daemon socket shared by Workbench) ──────────────
+# Wrapped in a subshell so any failure here never aborts the whole build.
+# The Docker socket bind-mount in spec.yaml makes docker available at runtime;
+# this just installs the CLI binary so we can call it without sudo.
+(
+  set -e
+  DOCKER_VERSION="27.5.1"
+  mkdir -p "$HOME/.local/bin"
+  curl -fsSL --retry 3 --retry-delay 5 \
+    "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_VERSION}.tgz" \
+    | tar -xz --strip-components=1 -C "$HOME/.local/bin" docker/docker
+  echo "Docker CLI installed: $($HOME/.local/bin/docker --version)"
+) || echo "WARNING: Docker CLI install failed — Launch button will not work until rebuilt."
 
-# Install Docker Compose plugin (v2) to user directory
-COMPOSE_VERSION="2.27.0"
-mkdir -p "$HOME/.docker/cli-plugins"
-curl -SL "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-x86_64" \
-  -o "$HOME/.docker/cli-plugins/docker-compose"
-chmod +x "$HOME/.docker/cli-plugins/docker-compose"
+# ── Docker Compose plugin (v2) ────────────────────────────────────────────────
+(
+  set -e
+  COMPOSE_VERSION="2.27.0"
+  mkdir -p "$HOME/.docker/cli-plugins"
+  curl -fsSL --retry 3 --retry-delay 5 \
+    "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-x86_64" \
+    -o "$HOME/.docker/cli-plugins/docker-compose"
+  chmod +x "$HOME/.docker/cli-plugins/docker-compose"
+  echo "Docker Compose installed: $($HOME/.local/bin/docker compose version)"
+) || echo "WARNING: Docker Compose install failed — Launch button will not work until rebuilt."
 
 # Ensure ~/.local/bin is on PATH
 grep -qxF 'export PATH="$HOME/.local/bin:$PATH"' "$HOME/.bashrc" \
   || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
 
-# Make launch-model.sh executable
-chmod +x /project/code/scripts/launch-model.sh
+# Note: scripts in /project/code/scripts/ are already marked executable in git (mode 100755).
+# /project/ is a runtime mount — it is not available during this build step.

@@ -98,7 +98,7 @@ services:
       - hf-cache:/root/.cache/huggingface
     environment:
       - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
-    command: ["--model", "google/gemma-3-4b-it", "--dtype", "bfloat16", "--max-model-len", "8192"]
+    command: ["--model", "${HF_MODEL_ID:-google/gemma-3-4b-it}", "--dtype", "bfloat16", "--max-model-len", "${HF_MAX_LEN:-8192}"]
 
 volumes:
   nim-cache:

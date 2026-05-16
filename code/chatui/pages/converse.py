@@ -22,6 +22,7 @@ from pathlib import Path
 
 import gradio as gr
 import json
+import requests
 import shutil
 import os
 import subprocess
@@ -291,7 +292,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                                 "gemma  — Ollama  (gemma3:4b)",
                                                 "qwen3  — Ollama  (qwen3:4b)",
                                                 "llama  — NIM     (meta/llama-3.2-3b-instruct)",
-                                                "hf     — vLLM    (google/gemma-3-4b-it)",
+                                                "hf     — vLLM    (HuggingFace — pick model below)",
                                             ],
                                             value="gemma  — Ollama  (gemma3:4b)",
                                             label="Model profile",
@@ -299,19 +300,45 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                         )
                                         launch_model_btn = gr.Button("▶ Launch", variant="primary", scale=1)
                                         stop_model_btn = gr.Button("⏹ Stop", variant="secondary", scale=1)
+                                    hf_model_input = gr.Textbox(
+                                        value="google/gemma-3-4b-it",
+                                        label="HuggingFace Model ID",
+                                        info="Any model from huggingface.co/models — requires HUGGING_FACE_HUB_TOKEN for gated models",
+                                        placeholder="e.g. google/gemma-3-4b-it  |  Qwen/Qwen3-4B  |  meta-llama/Llama-3.2-3B-Instruct",
+                                        visible=False,
+                                        interactive=True,
+                                    )
                                     launch_status = gr.Textbox(
                                         value="",
                                         label="Launcher status",
                                         interactive=False,
                                         placeholder="No model started yet — click Launch to begin.",
                                     )
+                                    with gr.Accordion("Container Logs", open=False, elem_id="accordion"):
+                                        gr.Markdown("Live tail of the running model container — useful for tracking HuggingFace download progress.")
+                                        with gr.Row():
+                                            refresh_logs_btn = gr.Button("🔄 Refresh Logs", size="sm", scale=1)
+                                            log_container_dd = gr.Dropdown(
+                                                choices=["local-gemma", "local-qwen3", "local-nim-llama", "local-hf"],
+                                                value="local-hf",
+                                                label="Container",
+                                                scale=2,
+                                            )
+                                        log_output = gr.Textbox(
+                                            value="",
+                                            label="",
+                                            interactive=False,
+                                            lines=12,
+                                            max_lines=12,
+                                            show_copy_button=True,
+                                        )
 
                                 remote_nim_msg = gr.Markdown("<br />Enter the details below. Then start chatting!")
                                 
                                 with gr.Row(equal_height=True):
-                                    nim_model_ip = gr.Textbox(value = "local-nim",
+                                    nim_model_ip = gr.Textbox(value = "localhost",
                                                label = "Microservice Host",
-                                               info = "Local microservice OR IP address running a remote microservice",
+                                               info = "localhost, a Docker container name, or a remote IP address",
                                                elem_id="rag-inputs", scale=2)
                                     nim_model_port = gr.Textbox(value = "8000",
                                                label = "Port",
@@ -336,6 +363,15 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                            info = "NIM/vLLM: org/name format — Ollama: name:tag format. Must match the active compose profile.",
                                            allow_custom_value = True,
                                            elem_id="rag-inputs")
+                                with gr.Row():
+                                    fetch_models_btn = gr.Button(
+                                        "🔍 Fetch Models", size="sm", scale=1, variant="secondary"
+                                    )
+                                    fetch_models_status = gr.Textbox(
+                                        value="", show_label=False, interactive=False,
+                                        scale=3, max_lines=1,
+                                        placeholder="← click to load models from the running microservice",
+                                    )
 
                     # Third tab item consists of database and document upload settings
                     with gr.TabItem("Upload Documents Here", id=2, interactive=False, visible=True) as vdb_settings:
@@ -911,30 +947,41 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
 
         # ── Local Model Launcher ──────────────────────────────────────────────
         _PROFILE_MAP = {
-            "gemma  — Ollama  (gemma3:4b)":                 ("gemma",  "local-gemma",      "8000", "gemma3:4b"),
-            "qwen3  — Ollama  (qwen3:4b)":                  ("qwen3",  "local-qwen3",       "8000", "qwen3:4b"),
-            "llama  — NIM     (meta/llama-3.2-3b-instruct)": ("llama",  "local-nim-llama",   "8000", "meta/llama-3.2-3b-instruct"),
-            "hf     — vLLM    (google/gemma-3-4b-it)":      ("hf",     "local-hf",          "8000", "google/gemma-3-4b-it"),
+            "gemma  — Ollama  (gemma3:4b)":                      ("gemma", "local-gemma",     "8000", "gemma3:4b"),
+            "qwen3  — Ollama  (qwen3:4b)":                       ("qwen3", "local-qwen3",     "8000", "qwen3:4b"),
+            "llama  — NIM     (meta/llama-3.2-3b-instruct)":     ("llama", "local-nim-llama", "8000", "meta/llama-3.2-3b-instruct"),
+            "hf     — vLLM    (HuggingFace — pick model below)": ("hf",    "local-hf",        "8000", None),
         }
 
-        def _launch_model(profile_label):
-            profile, host, port, model = _PROFILE_MAP[profile_label]
-            result = subprocess.run(
-                ["/bin/bash", "/project/code/scripts/launch-model.sh", profile],
-                capture_output=True, text=True, timeout=120,
-            )
+        def _on_profile_change(profile_label):
+            """Show the HF model ID textbox only for the vLLM/HF profile."""
+            is_hf = _PROFILE_MAP.get(profile_label, ("",))[0] == "hf"
+            return gr.update(visible=is_hf)
+
+        def _launch_model(profile_label, hf_model_id):
+            profile, host, port, fixed_model = _PROFILE_MAP[profile_label]
+            model = hf_model_id.strip() if profile == "hf" else fixed_model
+
+            cmd = ["/bin/bash", "/project/code/scripts/launch-model.sh", profile]
+            if profile == "hf" and model:
+                cmd.append(model)
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
             if result.returncode == 0:
-                # Persist the chosen profile so startup can auto-launch it next time
                 try:
                     with open("/project/.model-profile", "w") as _pf:
                         _pf.write(profile)
                 except Exception:
                     pass
+                display_model = model or "unknown"
+                status = f"✅ {host} running — model: {display_model}"
+                if profile == "hf":
+                    status += "\n⏳ First run downloads the model — open Container Logs and click 🔄 Refresh to track progress."
                 return (
-                    gr.update(value=f"✅ {host} running — model: {model}"),
+                    gr.update(value=status),
                     gr.update(value=host),
                     gr.update(value=port),
-                    gr.update(value=model),
+                    gr.update(value=display_model),
                 )
             err = (result.stderr or result.stdout or "unknown error")[:300]
             return gr.update(value=f"❌ {err}"), gr.update(), gr.update(), gr.update()
@@ -949,9 +996,25 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
             err = (result.stderr or result.stdout or "unknown error")[:200]
             return gr.update(value=f"❌ {err}")
 
+        def _refresh_logs(container_name):
+            """Tail the last 60 lines from the selected model container."""
+            result = subprocess.run(
+                ["docker", "logs", "--tail", "60", container_name],
+                capture_output=True, text=True, timeout=15,
+            )
+            output = (result.stdout or "") + (result.stderr or "")
+            if not output.strip():
+                return gr.update(value=f"(no output yet from '{container_name}' — is it running?)")
+            return gr.update(value=output.strip())
+
+        launch_profile_dd.change(
+            _on_profile_change,
+            inputs=[launch_profile_dd],
+            outputs=[hf_model_input],
+        )
         launch_model_btn.click(
             _launch_model,
-            inputs=[launch_profile_dd],
+            inputs=[launch_profile_dd, hf_model_input],
             outputs=[launch_status, nim_model_ip, nim_model_port, nim_model_id],
         )
         stop_model_btn.click(
@@ -959,6 +1022,45 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
             inputs=[],
             outputs=[launch_status],
         )
+        refresh_logs_btn.click(
+            _refresh_logs,
+            inputs=[log_container_dd],
+            outputs=[log_output],
+        )
+
+        # ── Fetch Models from running microservice ────────────────────────────
+        def _fetch_models(host: str, port: str):
+            """Call GET /v1/models on the configured microservice and populate the dropdown."""
+            host = (host or "").strip()
+            port = (port or "8000").strip()
+            if not host:
+                return gr.update(), "❌ Enter a Microservice Host first."
+            url = f"http://{host}:{port}/v1/models"
+            try:
+                resp = requests.get(url, timeout=5)
+                resp.raise_for_status()
+                data = resp.json()
+                ids = [m["id"] for m in data.get("data", [])]
+                if not ids:
+                    return gr.update(choices=[], value=None), f"⚠️ No models found at {url}"
+                return (
+                    gr.update(choices=ids, value=ids[0]),
+                    f"✅ {len(ids)} model(s) loaded from {host}:{port}",
+                )
+            except requests.exceptions.ConnectionError:
+                return gr.update(), f"❌ Cannot connect to {url}"
+            except requests.exceptions.Timeout:
+                return gr.update(), f"❌ Timed out connecting to {url}"
+            except Exception as exc:
+                return gr.update(), f"❌ {str(exc)[:200]}"
+
+        _fetch_outputs = [nim_model_id, fetch_models_status]
+        _fetch_inputs  = [nim_model_ip, nim_model_port]
+
+        fetch_models_btn.click(_fetch_models, inputs=_fetch_inputs, outputs=_fetch_outputs)
+        # Also trigger when user presses Enter in either the host or port field
+        nim_model_ip.submit(_fetch_models,   inputs=_fetch_inputs, outputs=_fetch_outputs)
+        nim_model_port.submit(_fetch_models, inputs=_fetch_inputs, outputs=_fetch_outputs)
 
     page.queue()
     return page

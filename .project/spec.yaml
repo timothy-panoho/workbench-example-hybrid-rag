@@ -125,6 +125,8 @@ execution:
     secrets:
         - variable: NVIDIA_API_KEY
           description: NVIDIA API Key for Cloud Inference (starts with "nvapi-")
+        - variable: HUGGING_FACE_HUB_TOKEN
+          description: HuggingFace token for downloading gated models (starts with "hf_")
     mounts:
         - type: project
           target: /project/
@@ -143,7 +145,6 @@ execution:
           description: ""
           options: volumeName=nvwb-shared-volume
         - type: bind
-          source: /var/run/docker.sock
           target: /var/run/docker.sock
           description: Docker socket so the container can manage local model containers
           options: rw
