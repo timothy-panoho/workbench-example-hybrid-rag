@@ -35,14 +35,14 @@ if [ "$PROFILE" = "stop" ]; then
     exit 0
 fi
 
-# ── For the hf (vLLM) profile, write model ID to .env so compose picks it up ──
+# ── For the hf (vLLM) profile, pass model ID via exported env var ──────────────
+# /project/.env is on a read-only bind-mount inside the container so we cannot
+# write to it.  Exporting the variable into the shell environment is equivalent:
+# Docker Compose resolves ${HF_MODEL_ID} from the shell env before --env-file,
+# so the compose.yaml command line picks up the correct model without any file I/O.
 if [ "$PROFILE" = "hf" ]; then
     MODEL_ID="${HF_MODEL:-google/gemma-3-4b-it}"
-    # Preserve any existing entries, then upsert HF_MODEL_ID
-    touch "$ENV_FILE"
-    grep -v "^HF_MODEL_ID=" "$ENV_FILE" > "${ENV_FILE}.tmp" || true
-    echo "HF_MODEL_ID=${MODEL_ID}" >> "${ENV_FILE}.tmp"
-    mv "${ENV_FILE}.tmp" "$ENV_FILE"
+    export HF_MODEL_ID="$MODEL_ID"
     echo "Model ID set to: ${MODEL_ID}"
 fi
 
