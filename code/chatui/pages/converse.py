@@ -1509,9 +1509,21 @@ def _stream_predict(
             retrieval_ftime = ""
             chunks = ""
             e2e_stime = time.time()
-            if len(use_knowledge_base) != 0:
+            use_vdb = len(use_knowledge_base) != 0
+            if use_vdb:
                 retrieval_stime = time.time()
-                documents = client.search(question)
+                try:
+                    documents = client.search(question)
+                except Exception as vdb_err:
+                    # Vector DB search failed (e.g. empty collection, embedding error).
+                    # Warn the user and continue answering without context.
+                    gr.Warning(
+                        "⚠️ Vector DB search failed — answering without retrieved context. "
+                        "Ensure you have uploaded documents before enabling the Vector Database. "
+                        f"({type(vdb_err).__name__})"
+                    )
+                    use_vdb = False
+                    documents = None
                 retrieval_ftime = str((time.time() - retrieval_stime) * 1000).split('.', 1)[0]
 
             # Generate the output
@@ -1528,7 +1540,7 @@ def _stream_predict(
                                         top_p_slider,
                                         freq_pen_slider,
                                         pres_pen_slider,
-                                        False if len(use_knowledge_base) == 0 else True,
+                                        use_vdb,
                                         int(num_token_slider)):
 
                 # The first chunk returned will always be the time to first token. Let's process that first.

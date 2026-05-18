@@ -2,7 +2,7 @@
 ATTEMPTS=0
 MAX_ATTEMPTS=30
 
-while [ $(curl -o /dev/null -s -w "%{http_code}" "http://localhost:19530/v1/vector/collections") -ne 200 ]; 
+while [ $(/usr/bin/curl -o /dev/null -s -w "%{http_code}" "http://localhost:19530/v1/vector/collections") -ne 200 ]; 
     do 
       ATTEMPTS=$(($ATTEMPTS+1))
       if [ ${ATTEMPTS} -eq ${MAX_ATTEMPTS} ]

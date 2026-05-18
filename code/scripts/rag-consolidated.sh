@@ -11,7 +11,7 @@ start_chain_server() {
 
     ATTEMPTS=0
     MAX_ATTEMPTS=30
-    while [ "$(curl -o /dev/null -s -w "%{http_code}" "http://localhost:8000/health")" != "200" ]; do
+    while [ "$(/usr/bin//usr/bin/curl -o /dev/null -s -w "%{http_code}" "http://localhost:8000/health")" != "200" ]; do
         ATTEMPTS=$((ATTEMPTS+1))
         if [ "$ATTEMPTS" -eq "$MAX_ATTEMPTS" ]; then
             echo "Max attempts reached ($MAX_ATTEMPTS). Chain server failed to start."
@@ -44,13 +44,13 @@ auto_launch_model() {
 if pgrep -x "milvus" > /dev/null; then
 
     # Milvus already running — make sure chain server is also up
-    if [[ "$(curl -o /dev/null -s -w "%{http_code}" --max-time 3 "http://localhost:8000/health")" != "200" ]]; then
+    if [[ "$(/usr/bin/curl -o /dev/null -s -w "%{http_code}" --max-time 3 "http://localhost:8000/health")" != "200" ]]; then
         echo "Chain server not responding — restarting..."
         start_chain_server
     fi
 
     # Check Milvus REST API
-    if [[ "$(curl -o /dev/null -s -w "%{http_code}" --max-time 3 "http://localhost:19530/v1/vector/collections")" != "200" ]]; then
+    if [[ "$(/usr/bin/curl -o /dev/null -s -w "%{http_code}" --max-time 3 "http://localhost:19530/v1/vector/collections")" != "200" ]]; then
         echo "Error: Milvus REST API not responding."
         exit 2
     fi
