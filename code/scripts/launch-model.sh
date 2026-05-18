@@ -24,7 +24,13 @@ if [ -z "$PROFILE" ]; then
 fi
 
 if [ "$PROFILE" = "stop" ]; then
-    docker compose -f "$COMPOSE_FILE" down 2>&1 || true
+    for c in local-ollama local-nim-llama local-hf; do
+        if docker inspect "$c" >/dev/null 2>&1; then
+            echo "Stopping $c..."
+            docker stop "$c" 2>/dev/null || true
+            docker rm   "$c" 2>/dev/null || true
+        fi
+    done
     echo "All local model containers stopped."
     exit 0
 fi
@@ -40,16 +46,34 @@ if [ "$PROFILE" = "hf" ]; then
     echo "Model ID set to: ${MODEL_ID}"
 fi
 
-# Stop any currently running profile containers cleanly
-docker compose -f "$COMPOSE_FILE" down 2>&1 || true
-
-# Start the requested profile
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" --profile "$PROFILE" up -d
-
-# Create the network if it doesn't already exist
+# Ensure the shared network exists before compose tries to use it (external: true)
 docker network create "$NETWORK" 2>/dev/null || true
+
+# Stop any running model containers by name.
+# (docker compose down would silently do nothing because the compose project name
+# differs between the host and inside this container — stop by name is reliable.)
+for c in local-ollama local-nim-llama local-hf; do
+    if docker inspect "$c" >/dev/null 2>&1; then
+        echo "Stopping $c..."
+        docker stop "$c" 2>/dev/null || true
+        docker rm   "$c" 2>/dev/null || true
+    fi
+done
+
+# The compose project name must match what the host uses (the repo directory name).
+# Dynamic detection via bind-mount paths is unreliable inside Docker Desktop WSL2
+# containers (the path contains a hash, not the directory name). Hardcode it.
+PROJECT_NAME="timothy-panoho-workbench-example-hybrid-rag"
+
+# Start the requested profile using the correct project name
+docker compose \
+    -f "$COMPOSE_FILE" \
+    --env-file "$ENV_FILE" \
+    --project-name "$PROJECT_NAME" \
+    --profile "$PROFILE" \
+    up -d
 
 # Connect the project container to the model network (idempotent)
 docker network connect "$NETWORK" "$CONTAINER" 2>/dev/null || true
 
-echo "Profile '$PROFILE' is up and network '$NETWORK' is connected."
+echo "Profile '$PROFILE' is up (project: $PROJECT_NAME) and network '$NETWORK' is connected."

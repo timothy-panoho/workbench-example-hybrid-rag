@@ -42,6 +42,27 @@ TITLE = "Hybrid RAG: Chat UI"
 OUTPUT_TOKENS = 250
 MAX_DOCS = 5
 
+_HISTORY_FILE = "/project/chat_history.json"
+
+
+def _save_history(history: list, metrics: dict) -> None:
+    """Persist chat history to disk so sessions can be resumed."""
+    try:
+        with open(_HISTORY_FILE, "w") as f:
+            json.dump({"history": history, "metrics": metrics}, f)
+    except Exception:
+        pass
+
+
+def _load_history() -> tuple:
+    """Load saved chat history from disk. Returns (history, metrics) or ([], {})."""
+    try:
+        with open(_HISTORY_FILE) as f:
+            data = json.load(f)
+        return data.get("history", []), data.get("metrics", {})
+    except Exception:
+        return [], {}
+
 ### Load in CSS here for components that need custom styling. ###
 
 _LOCAL_CSS = """
@@ -181,7 +202,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                 # Render the row of buttons: submit query, clear history, show metrics and contexts
                 with gr.Row():
                     submit_btn = gr.Button(value="[NOT READY] Submit", interactive=False)
-                    _ = gr.ClearButton([msg, chatbot, metrics, metrics_history], value="Clear history")
+                    clear_btn = gr.Button(value="Clear history")
                     mtx_show = gr.Button(value="Show Metrics")
                     mtx_hide = gr.Button(value="Hide Metrics", visible=False)
                     ctx_show = gr.Button(value="Show Context")
@@ -281,58 +302,6 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                 with gr.Accordion("Troubleshooting", open=False, elem_id="accordion"):
                                     gr.Markdown(info.nim_trouble)
 
-                                with gr.Accordion("Local Model Launcher", open=True, elem_id="accordion"):
-                                    gr.Markdown(
-                                        "Start a local model container without leaving Workbench. "
-                                        "Picks the right host, port, and model ID automatically."
-                                    )
-                                    with gr.Row():
-                                        launch_profile_dd = gr.Dropdown(
-                                            choices=[
-                                                "gemma  — Ollama  (gemma3:4b)",
-                                                "qwen3  — Ollama  (qwen3:4b)",
-                                                "llama  — NIM     (meta/llama-3.2-3b-instruct)",
-                                                "hf     — vLLM    (HuggingFace — pick model below)",
-                                            ],
-                                            value="gemma  — Ollama  (gemma3:4b)",
-                                            label="Model profile",
-                                            scale=3,
-                                        )
-                                        launch_model_btn = gr.Button("▶ Launch", variant="primary", scale=1)
-                                        stop_model_btn = gr.Button("⏹ Stop", variant="secondary", scale=1)
-                                    hf_model_input = gr.Textbox(
-                                        value="google/gemma-3-4b-it",
-                                        label="HuggingFace Model ID",
-                                        info="Any model from huggingface.co/models — requires HUGGING_FACE_HUB_TOKEN for gated models",
-                                        placeholder="e.g. google/gemma-3-4b-it  |  Qwen/Qwen3-4B  |  meta-llama/Llama-3.2-3B-Instruct",
-                                        visible=False,
-                                        interactive=True,
-                                    )
-                                    launch_status = gr.Textbox(
-                                        value="",
-                                        label="Launcher status",
-                                        interactive=False,
-                                        placeholder="No model started yet — click Launch to begin.",
-                                    )
-                                    with gr.Accordion("Container Logs", open=False, elem_id="accordion"):
-                                        gr.Markdown("Live tail of the running model container — useful for tracking HuggingFace download progress.")
-                                        with gr.Row():
-                                            refresh_logs_btn = gr.Button("🔄 Refresh Logs", size="sm", scale=1)
-                                            log_container_dd = gr.Dropdown(
-                                                choices=["local-gemma", "local-qwen3", "local-nim-llama", "local-hf"],
-                                                value="local-hf",
-                                                label="Container",
-                                                scale=2,
-                                            )
-                                        log_output = gr.Textbox(
-                                            value="",
-                                            label="",
-                                            interactive=False,
-                                            lines=12,
-                                            max_lines=12,
-                                            show_copy_button=True,
-                                        )
-
                                 remote_nim_msg = gr.Markdown("<br />Enter the details below. Then start chatting!")
                                 
                                 with gr.Row(equal_height=True):
@@ -396,8 +365,114 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                             doc_hide = gr.Button(value="Hide Documents", visible=False, size="sm")
                             clear_docs = gr.Button(value="Clear Database", interactive=True, size="sm") 
 
+                    # Fourth tab: dedicated Local Model Launcher
+                    with gr.TabItem("Local Model Launcher", id=3, interactive=False, visible=True) as launcher_settings:
+                        gr.Markdown(
+                            "### 🚀 Local Model Launcher\n"
+                            "Start a local model container and manage models — all without leaving Workbench."
+                        )
+                        with gr.Row():
+                            launch_profile_dd = gr.Dropdown(
+                                choices=[
+                                    "ollama — Ollama  (any model — manage below)",
+                                    "llama  — NIM     (meta/llama-3.2-3b-instruct)",
+                                    "hf     — vLLM    (HuggingFace — pick model below)",
+                                ],
+                                value="ollama — Ollama  (any model — manage below)",
+                                label="Model profile",
+                                scale=3,
+                            )
+                            launch_model_btn = gr.Button("▶ Launch", variant="primary", scale=1)
+                            stop_model_btn = gr.Button("⏹ Stop", variant="secondary", scale=1)
+
+                        launch_status = gr.Textbox(
+                            value="",
+                            label="Status",
+                            interactive=False,
+                            placeholder="No model started yet — click Launch to begin.",
+                        )
+
+                        # ── Model Manager (always visible, content depends on profile) ─
+                        gr.Markdown("---\n### Model Manager")
+
+                        # Ollama: full model switching + pull (ollama profile)
+                        with gr.Group(visible=True) as ollama_group:
+                            gr.Markdown(
+                                "Ollama holds **all downloaded models in one container** — switch between them "
+                                "instantly without restarting. Pull new models on demand."
+                            )
+                            with gr.Row():
+                                ollama_model_dd = gr.Dropdown(
+                                    choices=[],
+                                    value=None,
+                                    label="Downloaded models",
+                                    allow_custom_value=True,
+                                    interactive=True,
+                                    scale=3,
+                                )
+                                refresh_ollama_btn = gr.Button("🔄 Refresh", size="sm", scale=1)
+                                use_ollama_model_btn = gr.Button("▶ Use This Model", variant="primary", size="sm", scale=1)
+                            with gr.Row():
+                                pull_model_input = gr.Textbox(
+                                    label="Pull a new model",
+                                    placeholder="e.g.  llama3.2:3b  |  qwen2.5:7b  |  mistral:7b  |  phi4:latest",
+                                    info="Pulls into the running Ollama container — track progress in Container Logs below",
+                                    interactive=True,
+                                    scale=3,
+                                )
+                                pull_model_btn = gr.Button("⬇ Pull", variant="secondary", scale=1)
+
+                        # NIM: fixed model, read-only info (llama profile)
+                        with gr.Group(visible=False) as nim_group:
+                            gr.Markdown(
+                                "**NIM containers serve one optimised model** — unlike Ollama, you cannot "
+                                "swap models inside a running NIM. The model and inference settings are "
+                                "updated automatically once the container is ready.\n\n"
+                                "| | |\n|---|---|\n"
+                                "| **Container** | `local-nim-llama` |\n"
+                                "| **Model** | `meta/llama-3.2-3b-instruct` |\n"
+                                "| **Engine** | TensorRT-LLM FP8 (RTX 4090 optimised) |\n\n"
+                                "To use a different model, stop this container and select a different profile."
+                            )
+
+                        # HuggingFace / vLLM section (hf profile only)
+                        with gr.Group(visible=False) as hf_group:
+                            hf_model_input = gr.Textbox(
+                                value="google/gemma-3-4b-it",
+                                label="HuggingFace Model ID",
+                                info="Any model from huggingface.co/models — add HUGGING_FACE_HUB_TOKEN to .env for gated models",
+                                placeholder="e.g. google/gemma-3-4b-it  |  Qwen/Qwen3-4B  |  meta-llama/Llama-3.2-3B-Instruct",
+                                interactive=True,
+                            )
+                            gr.Markdown("**Downloaded models in vLLM cache** — these load instantly, no re-download needed")
+                            with gr.Row():
+                                refresh_hf_btn = gr.Button("🔄 Refresh Cache", size="sm", scale=1)
+                            hf_cache_output = gr.Textbox(
+                                value="", label="Cached models", interactive=False, lines=4, max_lines=6,
+                            )
+
+                        # ── Container Logs ───────────────────────────────────────────
+                        with gr.Accordion("Container Logs", open=False, elem_id="accordion"):
+                            gr.Markdown("Live tail of the running model container — useful for tracking download progress.")
+                            with gr.Row():
+                                refresh_logs_btn = gr.Button("🔄 Refresh Logs", size="sm", scale=1)
+                                log_container_dd = gr.Dropdown(
+                                    choices=["local-ollama", "local-nim-llama", "local-hf"],
+                                    value="local-ollama",
+                                    label="Container",
+                                    scale=2,
+                                )
+                            log_output = gr.Textbox(
+                                value="",
+                                label="",
+                                interactive=False,
+                                lines=12,
+                                max_lines=12,
+                                show_copy_button=True,
+                            )
+
                     # Final tab item consists of option to collapse the settings to reduce clutter on the UI
-                    with gr.TabItem("Hide All Settings", id=3, visible=False) as hide_all_settings:
+                    with gr.TabItem("Hide All Settings", id=4, visible=False) as hide_all_settings:
                         gr.Markdown("")
 
             # Hidden column to be rendered when the user collapses all settings.
@@ -848,6 +923,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                     setup_settings: gr.update(visible=False, interactive=False),
                     inf_settings: gr.update(visible=True, interactive=True),
                     vdb_settings: gr.update(visible=True, interactive=True),
+                    launcher_settings: gr.update(interactive=True),
                     submit_btn: gr.update(value="Submit", interactive=True),
                     hide_all_settings: gr.update(visible=True),
                     msg: gr.update(interactive=True, placeholder="Enter text and press SUBMIT"),
@@ -860,6 +936,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                     setup_settings: gr.update(visible=True, interactive=True),
                     inf_settings: gr.update(visible=True, interactive=False),
                     vdb_settings: gr.update(visible=True, interactive=False),
+                    launcher_settings: gr.update(interactive=False),
                     submit_btn: gr.update(value="[NOT READY] Submit", interactive=False),
                     hide_all_settings: gr.update(visible=False),
                     msg: gr.update(interactive=False, placeholder="[NOT READY] Ensure the NIM container is running, then click Set Up RAG Backend."),
@@ -867,7 +944,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                     tabs: gr.update(selected=2),
                 }
 
-        rag_start_button.click(_toggle_rag_start, [rag_start_button], [setup_settings, inf_settings, vdb_settings, submit_btn, hide_all_settings, msg, settings_tabs, tabs])
+        rag_start_button.click(_toggle_rag_start, [rag_start_button], [setup_settings, inf_settings, vdb_settings, launcher_settings, submit_btn, hide_all_settings, msg, settings_tabs, tabs])
 
         # form actions
         _my_build_stream = functools.partial(_stream_predict, client)
@@ -919,16 +996,25 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
             rc = subprocess.call("/bin/bash /project/code/scripts/rag-consolidated.sh", shell=True)
             progress(0.75, desc="Configuring UI...")
             time.sleep(0.25)
+            saved_history, saved_metrics = _load_history()
+            fetched_ip, fetched_port, fetched_model, fetch_status = _fetch_models()
             if rc in (0, 2):
                 return {
                     setup_settings: gr.update(visible=False, interactive=False),
                     inf_settings: gr.update(visible=True, interactive=True),
                     vdb_settings: gr.update(visible=True, interactive=True),
+                    launcher_settings: gr.update(interactive=True),
                     submit_btn: gr.update(value="Submit", interactive=True),
                     hide_all_settings: gr.update(visible=True),
                     msg: gr.update(interactive=True, placeholder="Enter text and press SUBMIT"),
                     settings_tabs: gr.update(selected=1),
                     tabs: gr.update(selected=2),
+                    chatbot: gr.update(value=saved_history),
+                    metrics_history: saved_metrics,
+                    nim_model_ip: fetched_ip,
+                    nim_model_port: fetched_port,
+                    nim_model_id: fetched_model,
+                    fetch_models_status: gr.update(value=fetch_status),
                 }
             else:
                 # NIM not ready yet — leave the setup button visible, no error shown
@@ -936,55 +1022,98 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                     setup_settings: gr.update(visible=True, interactive=True),
                     inf_settings: gr.update(visible=True, interactive=False),
                     vdb_settings: gr.update(visible=True, interactive=False),
+                    launcher_settings: gr.update(interactive=False),
                     submit_btn: gr.update(value="[NOT READY] Submit", interactive=False),
                     hide_all_settings: gr.update(visible=False),
                     msg: gr.update(interactive=False, placeholder="[NOT READY] Start the NIM container, then click Set Up RAG Backend."),
                     settings_tabs: gr.update(selected=0),
                     tabs: gr.update(selected=2),
+                    chatbot: gr.update(value=saved_history),
+                    metrics_history: saved_metrics,
+                    nim_model_ip: fetched_ip,
+                    nim_model_port: fetched_port,
+                    nim_model_id: fetched_model,
+                    fetch_models_status: gr.update(value=fetch_status),
                 }
 
-        page.load(_auto_start, None, [setup_settings, inf_settings, vdb_settings, submit_btn, hide_all_settings, msg, settings_tabs, tabs])
+        page.load(_auto_start, None, [setup_settings, inf_settings, vdb_settings, launcher_settings, submit_btn, hide_all_settings, msg, settings_tabs, tabs, chatbot, metrics_history, nim_model_ip, nim_model_port, nim_model_id, fetch_models_status])
 
         # ── Local Model Launcher ──────────────────────────────────────────────
         _PROFILE_MAP = {
-            "gemma  — Ollama  (gemma3:4b)":                      ("gemma", "local-gemma",     "8000", "gemma3:4b"),
-            "qwen3  — Ollama  (qwen3:4b)":                       ("qwen3", "local-qwen3",     "8000", "qwen3:4b"),
-            "llama  — NIM     (meta/llama-3.2-3b-instruct)":     ("llama", "local-nim-llama", "8000", "meta/llama-3.2-3b-instruct"),
-            "hf     — vLLM    (HuggingFace — pick model below)": ("hf",    "local-hf",        "8000", None),
+            "ollama — Ollama  (any model — manage below)":        ("ollama", "local-ollama",   "8000", None),
+            "llama  — NIM     (meta/llama-3.2-3b-instruct)":     ("llama",  "local-nim-llama", "8000", "meta/llama-3.2-3b-instruct"),
+            "hf     — vLLM    (HuggingFace — pick model below)": ("hf",     "local-hf",        "8000", None),
         }
 
         def _on_profile_change(profile_label):
-            """Show the HF model ID textbox only for the vLLM/HF profile."""
-            is_hf = _PROFILE_MAP.get(profile_label, ("",))[0] == "hf"
-            return gr.update(visible=is_hf)
+            """Show the right Model Manager panel for the selected profile."""
+            profile = _PROFILE_MAP.get(profile_label, ("",))[0]
+            return (
+                gr.update(visible=profile == "ollama"),   # ollama_group
+                gr.update(visible=profile == "llama"),    # nim_group
+                gr.update(visible=profile == "hf"),       # hf_group
+            )
 
         def _launch_model(profile_label, hf_model_id):
+            """Start the selected model container and poll until it is serving requests."""
             profile, host, port, fixed_model = _PROFILE_MAP[profile_label]
             model = hf_model_id.strip() if profile == "hf" else fixed_model
+            no_change = gr.update(), gr.update(), gr.update(), gr.update()
+
+            yield gr.update(value=f"⏳ Starting {host}…"), *no_change
 
             cmd = ["/bin/bash", "/project/code/scripts/launch-model.sh", profile]
             if profile == "hf" and model:
                 cmd.append(model)
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-            if result.returncode == 0:
+            if result.returncode != 0:
+                err = (result.stderr or result.stdout or "unknown error")[:300]
+                yield gr.update(value=f"❌ {err}"), *no_change
+                return
+
+            try:
+                with open("/project/.model-profile", "w") as _pf:
+                    _pf.write(profile)
+            except Exception:
+                pass
+
+            # Poll until the container's /v1/models endpoint responds
+            url = f"http://{host}:{port}/v1/models"
+            start = time.time()
+            max_wait = 360
+            poll_interval = 5
+            while True:
+                elapsed = int(time.time() - start)
                 try:
-                    with open("/project/.model-profile", "w") as _pf:
-                        _pf.write(profile)
+                    resp = requests.get(url, timeout=2)
+                    if resp.ok:
+                        ids = [m["id"] for m in resp.json().get("data", [])]
+                        display_model = ids[0] if ids else (model or "unknown")
+                        status = f"✅ {host} ready ({elapsed}s) — model: {display_model}"
+                        ollama_dd = gr.update()
+                        if profile == "ollama":
+                            ollama_dd, ollama_msg = _refresh_ollama_models()
+                            status += f"\n{ollama_msg}"
+                        elif profile == "hf":
+                            status += "\n⏳ First run downloads the model — check Container Logs for progress."
+                        yield (
+                            gr.update(value=status),
+                            gr.update(value=host),
+                            gr.update(value=port),
+                            gr.update(value=display_model),
+                            ollama_dd,
+                        )
+                        return
                 except Exception:
                     pass
-                display_model = model or "unknown"
-                status = f"✅ {host} running — model: {display_model}"
-                if profile == "hf":
-                    status += "\n⏳ First run downloads the model — open Container Logs and click 🔄 Refresh to track progress."
-                return (
-                    gr.update(value=status),
-                    gr.update(value=host),
-                    gr.update(value=port),
-                    gr.update(value=display_model),
-                )
-            err = (result.stderr or result.stdout or "unknown error")[:300]
-            return gr.update(value=f"❌ {err}"), gr.update(), gr.update(), gr.update()
+
+                if elapsed >= max_wait:
+                    yield gr.update(value=f"⚠️ {host} started but not responding after {max_wait}s — check Container Logs"), *no_change
+                    return
+
+                yield gr.update(value=f"⏳ Waiting for {host}… {elapsed}s  (NIM may take 2-3 min to load TensorRT engine)"), *no_change
+                time.sleep(poll_interval)
 
         def _stop_model():
             result = subprocess.run(
@@ -1010,12 +1139,12 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
         launch_profile_dd.change(
             _on_profile_change,
             inputs=[launch_profile_dd],
-            outputs=[hf_model_input],
+            outputs=[ollama_group, nim_group, hf_group],
         )
         launch_model_btn.click(
             _launch_model,
             inputs=[launch_profile_dd, hf_model_input],
-            outputs=[launch_status, nim_model_ip, nim_model_port, nim_model_id],
+            outputs=[launch_status, nim_model_ip, nim_model_port, nim_model_id, ollama_model_dd],
         )
         stop_model_btn.click(
             _stop_model,
@@ -1028,39 +1157,151 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
             outputs=[log_output],
         )
 
+        # ── Ollama Model Manager ──────────────────────────────────────────────
+        def _ollama_running():
+            """Return True if local-ollama is running."""
+            chk = subprocess.run(
+                ["docker", "inspect", "local-ollama", "--format", "{{.State.Running}}"],
+                capture_output=True, text=True, timeout=5,
+            )
+            return chk.returncode == 0 and chk.stdout.strip() == "true"
+
+        def _refresh_ollama_models():
+            """List all models downloaded in the running Ollama container."""
+            if not _ollama_running():
+                return gr.update(choices=[], value=None), "❌ No Ollama container running — launch the ollama profile first"
+            lst = subprocess.run(
+                ["docker", "exec", "local-ollama", "ollama", "list"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if lst.returncode == 0:
+                lines = lst.stdout.strip().split("\n")
+                models = [l.split()[0] for l in lines[1:] if l.strip()]
+                if models:
+                    return gr.update(choices=models, value=models[0]), f"✅ {len(models)} model(s) available"
+                return gr.update(choices=[], value=None), "⚠️ Container running but no models yet — pull one below"
+            return gr.update(choices=[], value=None), "❌ Could not query Ollama"
+
+        def _use_ollama_model(model_name):
+            """Update Inference Settings to point at the selected Ollama model."""
+            if not model_name:
+                return gr.update(), gr.update(), gr.update(), "❌ No model selected"
+            if not _ollama_running():
+                return gr.update(), gr.update(), gr.update(), "❌ No Ollama container running"
+            return (
+                gr.update(value="local-ollama"),
+                gr.update(value="8000"),
+                gr.update(value=model_name),
+                f"✅ Inference settings updated → local-ollama:8000  /  {model_name}",
+            )
+
+        def _pull_ollama_model(model_name):
+            """Pull a new model into the running Ollama container (runs in background)."""
+            if not model_name.strip():
+                return gr.update(value="❌ Enter a model name to pull")
+            if not _ollama_running():
+                return gr.update(value="❌ No Ollama container running — launch the ollama profile first")
+            subprocess.Popen(["docker", "exec", "local-ollama", "ollama", "pull", model_name.strip()])
+            return gr.update(
+                value=f"⏳ Pulling '{model_name}' — open Container Logs and click 🔄 Refresh to track progress. "
+                      f"Click 🔄 Refresh above when done to add it to the model list."
+            )
+
+        # ── HuggingFace Cache Browser ─────────────────────────────────────────
+        def _refresh_hf_cache():
+            """List models already downloaded in the vLLM HF cache volume."""
+            chk = subprocess.run(
+                ["docker", "inspect", "local-hf", "--format", "{{.State.Running}}"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if chk.returncode != 0 or chk.stdout.strip() != "true":
+                return "", "❌ local-hf container not running — launch the hf profile first"
+            ls = subprocess.run(
+                ["docker", "exec", "local-hf", "ls", "/root/.cache/huggingface/hub/"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if ls.returncode != 0:
+                return "", "❌ Could not read HF cache"
+            entries = [e for e in ls.stdout.strip().split("\n") if e.startswith("models--")]
+            if not entries:
+                return "", "✅ HF cache is empty — launch the hf profile and it will download on first use"
+            # models--google--gemma-3-4b-it  →  google/gemma-3-4b-it
+            readable = []
+            for e in entries:
+                parts = e.replace("models--", "").split("--")
+                readable.append("/".join(parts) if len(parts) >= 2 else e)
+            return "\n".join(readable), f"✅ {len(readable)} model(s) cached"
+
+        refresh_ollama_btn.click(_refresh_ollama_models, inputs=[], outputs=[ollama_model_dd, launch_status])
+        use_ollama_model_btn.click(_use_ollama_model, inputs=[ollama_model_dd], outputs=[nim_model_ip, nim_model_port, nim_model_id, launch_status])
+        pull_model_btn.click(_pull_ollama_model, inputs=[pull_model_input], outputs=[launch_status])
+        refresh_hf_btn.click(_refresh_hf_cache, inputs=[], outputs=[hf_cache_output, launch_status])
+
         # ── Fetch Models from running microservice ────────────────────────────
-        def _fetch_models(host: str, port: str):
-            """Call GET /v1/models on the configured microservice and populate the dropdown."""
-            host = (host or "").strip()
-            port = (port or "8000").strip()
-            if not host:
-                return gr.update(), "❌ Enter a Microservice Host first."
-            url = f"http://{host}:{port}/v1/models"
-            try:
-                resp = requests.get(url, timeout=5)
-                resp.raise_for_status()
-                data = resp.json()
-                ids = [m["id"] for m in data.get("data", [])]
-                if not ids:
-                    return gr.update(choices=[], value=None), f"⚠️ No models found at {url}"
-                return (
-                    gr.update(choices=ids, value=ids[0]),
-                    f"✅ {len(ids)} model(s) loaded from {host}:{port}",
+        def _fetch_models():
+            """Auto-detect whichever local model container is running and populate host, port, and model."""
+            candidates = [
+                (profile, host, port)
+                for profile, host, port, _ in _PROFILE_MAP.values()
+            ]
+            seen = set()
+            unique_candidates = []
+            for c in candidates:
+                if c not in seen:
+                    seen.add(c)
+                    unique_candidates.append(c)
+
+            starting_up = []
+            for _profile, host, port in unique_candidates:
+                # First check if the container is actually running
+                chk = subprocess.run(
+                    ["docker", "inspect", host, "--format", "{{.State.Running}}"],
+                    capture_output=True, text=True, timeout=5,
                 )
-            except requests.exceptions.ConnectionError:
-                return gr.update(), f"❌ Cannot connect to {url}"
-            except requests.exceptions.Timeout:
-                return gr.update(), f"❌ Timed out connecting to {url}"
-            except Exception as exc:
-                return gr.update(), f"❌ {str(exc)[:200]}"
+                container_up = chk.returncode == 0 and chk.stdout.strip() == "true"
 
-        _fetch_outputs = [nim_model_id, fetch_models_status]
-        _fetch_inputs  = [nim_model_ip, nim_model_port]
+                url = f"http://{host}:{port}/v1/models"
+                try:
+                    resp = requests.get(url, timeout=3)
+                    resp.raise_for_status()
+                    ids = [m["id"] for m in resp.json().get("data", [])]
+                    if not ids:
+                        continue
+                    return (
+                        gr.update(value=host),
+                        gr.update(value=port),
+                        gr.update(choices=ids, value=ids[0]),
+                        f"✅ {len(ids)} model(s) found at {host}:{port}",
+                    )
+                except Exception:
+                    if container_up:
+                        starting_up.append(host)
 
-        fetch_models_btn.click(_fetch_models, inputs=_fetch_inputs, outputs=_fetch_outputs)
-        # Also trigger when user presses Enter in either the host or port field
-        nim_model_ip.submit(_fetch_models,   inputs=_fetch_inputs, outputs=_fetch_outputs)
-        nim_model_port.submit(_fetch_models, inputs=_fetch_inputs, outputs=_fetch_outputs)
+            if starting_up:
+                names = ", ".join(starting_up)
+                return (
+                    gr.update(), gr.update(), gr.update(),
+                    f"⏳ {names} is running but still loading — click 🔍 Fetch Models again in a moment.",
+                )
+            return (
+                gr.update(), gr.update(), gr.update(),
+                "❌ No local model containers running — use the Local Model Launcher tab to start one.",
+            )
+
+        _fetch_outputs = [nim_model_ip, nim_model_port, nim_model_id, fetch_models_status]
+
+        fetch_models_btn.click(_fetch_models, inputs=[], outputs=_fetch_outputs)
+
+        # ── Clear history (also wipes the on-disk file) ───────────────────────
+        def _clear_history_cb():
+            try:
+                if os.path.exists(_HISTORY_FILE):
+                    os.remove(_HISTORY_FILE)
+            except Exception:
+                pass
+            return gr.update(value=""), gr.update(value=[]), gr.update(value=None), {}
+
+        clear_btn.click(_clear_history_cb, inputs=[], outputs=[msg, chatbot, metrics, metrics_history])
 
     page.queue()
     return page
@@ -1171,13 +1412,16 @@ def _stream_predict(
     
             # With final output generated, run some final calculations and display them as metrics to the user
             gen_time, e2e_ftime, tokens, tokens_sec, itl = utils.get_final_metrics(time.time(), e2e_stime, ttft, retrieval_ftime, chunks)
-            metrics_history.get(str(response_num)).update({"Generation Time": gen_time + "ms", 
-                                                           "End to End Time (E2E)": e2e_ftime + "ms", 
-                                                           "Tokens (est.)": tokens + " tokens", 
-                                                           "Tokens/Second (est.)": tokens_sec + " tokens/sec", 
+            metrics_history.get(str(response_num)).update({"Generation Time": gen_time + "ms",
+                                                           "End to End Time (E2E)": e2e_ftime + "ms",
+                                                           "Tokens (est.)": tokens + " tokens",
+                                                           "Tokens/Second (est.)": tokens_sec + " tokens/sec",
                                                            "Inter-Token Latency (est.)": itl + " ms"})
+            _save_history(chat_history + [[question, chunks]], metrics_history)
             yield "", gr.update(show_label=False), documents, gr.update(value=metrics_history), metrics_history
 
-        # Catch any exceptions and direct the user to the logs/output. 
-        except Exception as e: 
-            yield "", chat_history + [[question, "*** ERR: Unable to process query. ***\n\nMessage: " + traceback.format_exc()]], None, gr.update(value=metrics_history), metrics_history
+        # Catch any exceptions and direct the user to the logs/output.
+        except Exception as e:
+            err_history = chat_history + [[question, "*** ERR: Unable to process query. ***\n\nMessage: " + traceback.format_exc()]]
+            _save_history(err_history, metrics_history)
+            yield "", err_history, None, gr.update(value=metrics_history), metrics_history
