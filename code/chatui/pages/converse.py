@@ -470,7 +470,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
 
                 with gr.Row(equal_height=True):
                     with gr.Column(scale=2, min_width=400):
-                        chatbot = gr.Chatbot(show_label=False, height=640)
+                        chatbot = gr.Chatbot(show_label=False, height=640, type="tuples")
 
                     context = gr.JSON(
                         scale=1, label="Retrieved Context",
@@ -1577,7 +1577,7 @@ def _stream_predict(
                                   session.get("documents", []))
             except Exception:
                 pass
-            yield "", gr.update(show_label=False), documents, gr.update(value=metrics_history), metrics_history, gr.update(value=token_info)
+            yield "", gr.update(value=final_history), documents, gr.update(value=metrics_history), metrics_history, gr.update(value=token_info)
 
         # Catch any exceptions and direct the user to the logs/output.
         except Exception as e:
