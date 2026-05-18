@@ -230,7 +230,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
         # ── Header: hamburger + title ─────────────────────────────────────────
         with gr.Row(equal_height=False):
             hamburger_btn = gr.Button("☰", size="sm", scale=0, min_width=40, elem_id="hamburger-btn")
-            gr.Markdown(f"# {TITLE}", scale=20)
+            gr.Markdown(f"# {TITLE}")
 
         # State
         which_nim_tab = gr.State(0)
