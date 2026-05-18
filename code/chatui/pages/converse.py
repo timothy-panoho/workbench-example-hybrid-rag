@@ -470,7 +470,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
 
                 with gr.Row(equal_height=True):
                     with gr.Column(scale=2, min_width=400):
-                        chatbot = gr.Chatbot(show_label=False, height=640, type="tuples")
+                        chatbot = gr.Chatbot(show_label=False, height=640)
 
                     context = gr.JSON(
                         scale=1, label="Retrieved Context",
