@@ -39,7 +39,7 @@ from chatui.pages import utils
 _LOGGER = logging.getLogger(__name__)
 PATH = "/"
 TITLE = "Hybrid RAG: Chat UI"
-OUTPUT_TOKENS = 250
+OUTPUT_TOKENS = 1024
 MAX_DOCS = 5
 
 _HISTORY_FILE = "/project/chat_history.json"
@@ -68,7 +68,7 @@ def _load_history() -> tuple:
 _LOCAL_CSS = """
 #contextbox {
     overflow-y: scroll !important;
-    max-height: 400px;
+    max-height: 620px;
 }
 
 #params .tabs {
@@ -93,6 +93,16 @@ _LOCAL_CSS = """
 }
 #rag-inputs .svelte-1gfkn6j {
     color: #76b900;
+}
+#token-counter {
+    font-size: 0.82em;
+    opacity: 0.75;
+    padding: 2px 0;
+}
+/* Chat History tab — make long conversations scrollable */
+#history-scroll {
+    max-height: 620px;
+    overflow-y: auto;
 }
 """
 
@@ -128,7 +138,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                 # Main chatbot panel. Context and Metrics are hidden until toggled
                 with gr.Row(equal_height=True):
                     with gr.Column(scale=2, min_width=350):
-                        chatbot = gr.Chatbot(show_label=False)
+                        chatbot = gr.Chatbot(show_label=False, height=620)
                         
                     context = gr.JSON(
                         scale=1,
@@ -199,6 +209,13 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                             ["Toggle to use Vector Database"], label="Vector Database", info="Supply your uploaded documents to the chatbot"
                         )
 
+                # Live token counter for the prompt being typed
+                with gr.Row():
+                    token_counter_md = gr.Markdown(
+                        "✏️ Prompt: **0 tokens**",
+                        elem_id="token-counter",
+                    )
+
                 # Render the row of buttons: submit query, clear history, show metrics and contexts
                 with gr.Row():
                     submit_btn = gr.Button(value="[NOT READY] Submit", interactive=False)
@@ -207,6 +224,10 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                     mtx_hide = gr.Button(value="Hide Metrics", visible=False)
                     ctx_show = gr.Button(value="Show Context")
                     ctx_hide = gr.Button(value="Hide Context", visible=False)
+
+                # Plain-English guide to the metrics panel
+                with gr.Accordion("📊 What do the metrics mean?", open=False, elem_id="accordion"):
+                    gr.Markdown(info.metrics_guide)
 
             # Right Column will display the inference and database settings
             with gr.Column(scale=10, min_width=450, visible=True) as settings_column:
@@ -470,6 +491,19 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                 max_lines=12,
                                 show_copy_button=True,
                             )
+
+                    # Chat History tab — browse / review saved conversation
+                    with gr.TabItem("Chat History", id=5, interactive=True, visible=True) as history_settings:
+                        gr.Markdown(
+                            "### 💬 Chat History\n"
+                            "Review your saved conversations. History is restored automatically on every page reload — "
+                            "use **Clear history** on the left to wipe it."
+                        )
+                        with gr.Row():
+                            refresh_history_btn = gr.Button("🔄 Load / Refresh", size="sm", scale=1, variant="secondary")
+                        history_display = gr.Markdown(
+                            value="*(Click **🔄 Load / Refresh** to view your saved chat history)*",
+                        )
 
                     # Final tab item consists of option to collapse the settings to reduce clutter on the UI
                     with gr.TabItem("Hide All Settings", id=4, visible=False) as hide_all_settings:
@@ -1292,6 +1326,40 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
 
         fetch_models_btn.click(_fetch_models, inputs=[], outputs=_fetch_outputs)
 
+        # ── Live token counter (updates as the user types) ───────────────────
+        def _update_token_count(text: str) -> str:
+            if not text or not text.strip():
+                return "✏️ Prompt: **0 tokens**"
+            try:
+                enc = tiktoken.get_encoding("cl100k_base")
+                count = len(enc.encode(text))
+                return f"✏️ Prompt: **{count} token{'s' if count != 1 else ''}**"
+            except Exception:
+                return "✏️ Prompt: counting…"
+
+        msg.change(_update_token_count, inputs=[msg], outputs=[token_counter_md])
+
+        # ── Chat History tab ──────────────────────────────────────────────────
+        def _render_history_tab() -> str:
+            history, _ = _load_history()
+            if not history:
+                return (
+                    "*No saved history yet — start chatting and your conversation will appear "
+                    "here on the next refresh.*"
+                )
+            parts = []
+            for i, (q, a) in enumerate(history, 1):
+                # indent multi-line questions as a blockquote
+                q_safe = "\n> ".join(q.splitlines()) if q else ""
+                parts.append(
+                    f"**[{i}] 🧑 You**\n\n> {q_safe}\n\n"
+                    f"**🤖 Assistant**\n\n{a}\n\n---"
+                )
+            return "\n\n".join(parts)
+
+        refresh_history_btn.click(_render_history_tab, inputs=[], outputs=[history_display])
+        history_settings.select(_render_history_tab, inputs=[], outputs=[history_display])
+
         # ── Clear history (also wipes the on-disk file) ───────────────────────
         def _clear_history_cb():
             try:
@@ -1299,9 +1367,19 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                     os.remove(_HISTORY_FILE)
             except Exception:
                 pass
-            return gr.update(value=""), gr.update(value=[]), gr.update(value=None), {}
+            return (
+                gr.update(value=""),   # msg
+                gr.update(value=[]),   # chatbot
+                gr.update(value=None), # metrics
+                {},                    # metrics_history
+                "*(History cleared — nothing to show)*",  # history_display
+            )
 
-        clear_btn.click(_clear_history_cb, inputs=[], outputs=[msg, chatbot, metrics, metrics_history])
+        clear_btn.click(
+            _clear_history_cb,
+            inputs=[],
+            outputs=[msg, chatbot, metrics, metrics_history, history_display],
+        )
 
     page.queue()
     return page
@@ -1417,6 +1495,19 @@ def _stream_predict(
                                                            "Tokens (est.)": tokens + " tokens",
                                                            "Tokens/Second (est.)": tokens_sec + " tokens/sec",
                                                            "Inter-Token Latency (est.)": itl + " ms"})
+
+            # Warn the user if the response looks truncated (reached ≥95 % of the token limit)
+            try:
+                if int(tokens) >= int(num_token_slider) * 0.95:
+                    chunks += (
+                        f"\n\n---\n⚠️ *Response may be incomplete — the model reached the "
+                        f"**{int(num_token_slider)}-token limit**. "
+                        f"Open **Show Output Tools → Max Tokens in Response** and increase the slider, "
+                        f"then ask again.*"
+                    )
+            except Exception:
+                pass
+
             _save_history(chat_history + [[question, chunks]], metrics_history)
             yield "", gr.update(show_label=False), documents, gr.update(value=metrics_history), metrics_history
 
