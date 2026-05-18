@@ -551,17 +551,20 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
 
         def _toggle_info(btn: str) -> Dict[gr.component, Dict[Any, Any]]:
             """" Event listener to toggle context and/or metrics panes visible to the user. """
-            if btn == "Show Context":
+            if "Show Context" in btn:
                 out = [True, False, False, False, True, True, False, True, False]
-            elif btn == "Hide Context":
+            elif "Hide Context" in btn:
                 out = [False, False, False, True, False, True, False, True, False]
-            elif btn == "Show Metrics":
+            elif "Show Metrics" in btn:
                 out = [False, True, False, True, False, False, True, True, False]
-            elif btn == "Hide Metrics":
+            elif "Hide Metrics" in btn:
                 out = [False, False, False, True, False, True, False, True, False]
-            elif btn == "Show Documents":
+            elif "Show Documents" in btn:
                 out = [False, False, True, True, False, True, False, False, True]
-            elif btn == "Hide Documents":
+            elif "Hide Documents" in btn:
+                out = [False, False, False, True, False, True, False, True, False]
+            else:
+                # fallback: no-op — hide all panels, show all "show" buttons
                 out = [False, False, False, True, False, True, False, True, False]
             return {
                 context: gr.update(visible=out[0]),
