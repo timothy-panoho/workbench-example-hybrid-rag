@@ -68,7 +68,7 @@ def _load_history() -> tuple:
 _LOCAL_CSS = """
 #contextbox {
     overflow-y: scroll !important;
-    max-height: 620px;
+    max-height: 650px;
 }
 
 #params .tabs {
@@ -94,15 +94,30 @@ _LOCAL_CSS = """
 #rag-inputs .svelte-1gfkn6j {
     color: #76b900;
 }
+/* Live token counter — subtle, below the message box */
 #token-counter {
     font-size: 0.82em;
-    opacity: 0.75;
-    padding: 2px 0;
+    opacity: 0.72;
+    padding: 2px 0 0 2px;
 }
-/* Chat History tab — make long conversations scrollable */
-#history-scroll {
-    max-height: 620px;
-    overflow-y: auto;
+/* Secondary button row — metrics / context toggles */
+#secondary-btns button {
+    font-size: 0.85em;
+}
+/* Collapsed-settings sidebar handle */
+#settings-expand-col {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 8px;
+    border-left: 2px solid rgba(118,185,0,0.25);
+}
+#settings-expand-col button {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    height: 120px;
+    font-size: 0.8em;
+    letter-spacing: 0.05em;
 }
 """
 
@@ -133,7 +148,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
         with gr.Row(equal_height=True):
 
             # Left Column will display the chatbot
-            with gr.Column(scale=15, min_width=350):
+            with gr.Column(scale=22, min_width=420):
 
                 # Main chatbot panel. Context and Metrics are hidden until toggled
                 with gr.Row(equal_height=True):
@@ -161,39 +176,6 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                         elem_id="contextbox",
                     )
 
-                # Render the output sliders to customize the generation output. 
-                with gr.Tabs(selected=0, visible=False) as out_tabs:
-                    with gr.TabItem("Max Tokens in Response", id=0) as max_tokens_in_response:
-                        num_token_slider = gr.Slider(0, utils.preset_max_tokens()[1], value=utils.preset_max_tokens()[0], 
-                                                     label=info.num_token_label, 
-                                                     interactive=True)
-                        
-                    with gr.TabItem("Temperature", id=1) as temperature:
-                        temp_slider = gr.Slider(0, 1, value=0.7, 
-                                                label=info.temp_label, 
-                                                interactive=True)
-                        
-                    with gr.TabItem("Top P", id=2) as top_p:
-                        top_p_slider = gr.Slider(0.001, 0.999, value=0.999, 
-                                                 label=info.top_p_label, 
-                                                 interactive=True)
-                        
-                    with gr.TabItem("Frequency Penalty", id=3) as freq_pen:
-                        freq_pen_slider = gr.Slider(-2, 2, value=0, 
-                                                    label=info.freq_pen_label, 
-                                                    interactive=True)
-                        
-                    with gr.TabItem("Presence Penalty", id=4) as pres_pen:
-                        pres_pen_slider = gr.Slider(-2, 2, value=0, 
-                                                    label=info.pres_pen_label, 
-                                                    interactive=True)
-                        
-                    with gr.TabItem("Hide Output Tools", id=5) as hide_out_tools:
-                        gr.Markdown("")
-
-                # Hidden button to expand output sliders, if hidden
-                out_tabs_show = gr.Button(value="Show Output Tools", size="sm", visible=True)
-
                 # Render the user input textbox and checkbox to toggle vanilla inference and RAG.
                 with gr.Row(equal_height=True):
                     with gr.Column(scale=2, min_width=200):
@@ -216,21 +198,24 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                         elem_id="token-counter",
                     )
 
-                # Render the row of buttons: submit query, clear history, show metrics and contexts
+                # Primary action row: Submit + Clear
                 with gr.Row():
-                    submit_btn = gr.Button(value="[NOT READY] Submit", interactive=False)
-                    clear_btn = gr.Button(value="Clear history")
-                    mtx_show = gr.Button(value="Show Metrics")
-                    mtx_hide = gr.Button(value="Hide Metrics", visible=False)
-                    ctx_show = gr.Button(value="Show Context")
-                    ctx_hide = gr.Button(value="Hide Context", visible=False)
+                    submit_btn = gr.Button(value="[NOT READY] Submit", interactive=False, scale=4, variant="primary")
+                    clear_btn  = gr.Button(value="🗑 Clear", scale=1, size="sm")
+
+                # Secondary row: optional panel toggles (smaller, unobtrusive)
+                with gr.Row(elem_id="secondary-btns"):
+                    mtx_show = gr.Button(value="📊 Show Metrics",  size="sm", scale=1)
+                    mtx_hide = gr.Button(value="📊 Hide Metrics",  size="sm", scale=1, visible=False)
+                    ctx_show = gr.Button(value="📄 Show Context",  size="sm", scale=1)
+                    ctx_hide = gr.Button(value="📄 Hide Context",  size="sm", scale=1, visible=False)
 
                 # Plain-English guide to the metrics panel
                 with gr.Accordion("📊 What do the metrics mean?", open=False, elem_id="accordion"):
                     gr.Markdown(info.metrics_guide)
 
-            # Right Column will display the inference and database settings
-            with gr.Column(scale=10, min_width=450, visible=True) as settings_column:
+            # Right Column — settings panel (starts collapsed after successful setup)
+            with gr.Column(scale=7, min_width=350, visible=True) as settings_column:
                 with gr.Tabs(selected=0) as settings_tabs:
 
                     # First tab item is a button to start the RAG backend and unlock other settings
@@ -505,13 +490,51 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                             value="*(Click **🔄 Load / Refresh** to view your saved chat history)*",
                         )
 
+                    # Generation parameters — moved here so the chat area stays clean
+                    with gr.TabItem("⚙ Parameters", id=6, interactive=True, visible=True) as params_settings:
+                        gr.Markdown(
+                            "Adjust generation parameters. Changes take effect on the **next message**.\n\n"
+                            "Expand **📊 What do the metrics mean?** in the chat panel for a full guide."
+                        )
+                        num_token_slider = gr.Slider(
+                            0, utils.preset_max_tokens()[1],
+                            value=utils.preset_max_tokens()[0],
+                            label="Max Tokens in Response",
+                            info="Increase if responses are getting cut off. 1 token ≈ ¾ of a word.",
+                            interactive=True,
+                        )
+                        temp_slider = gr.Slider(
+                            0, 1, value=0.7,
+                            label="Temperature",
+                            info="Higher = more creative/random. Lower = focused/deterministic. 0.7 is a good default.",
+                            interactive=True,
+                        )
+                        top_p_slider = gr.Slider(
+                            0.001, 0.999, value=0.999,
+                            label="Top P",
+                            info="Nucleus sampling threshold. Leave at 0.999 and tune Temperature instead.",
+                            interactive=True,
+                        )
+                        freq_pen_slider = gr.Slider(
+                            -2, 2, value=0,
+                            label="Frequency Penalty",
+                            info="Reduces repetition of the same words. Try 0.3–0.8 if the model loops.",
+                            interactive=True,
+                        )
+                        pres_pen_slider = gr.Slider(
+                            -2, 2, value=0,
+                            label="Presence Penalty",
+                            info="Encourages covering new topics. Try 0.3–0.8 for broader answers.",
+                            interactive=True,
+                        )
+
                     # Final tab item consists of option to collapse the settings to reduce clutter on the UI
                     with gr.TabItem("Hide All Settings", id=4, visible=False) as hide_all_settings:
                         gr.Markdown("")
 
-            # Hidden column to be rendered when the user collapses all settings.
-            with gr.Column(scale=1, min_width=100, visible=False) as hidden_settings_column:
-                show_settings = gr.Button(value="< Expand", size="sm")
+            # Collapsed-settings sidebar handle — visible when settings are hidden.
+            with gr.Column(scale=1, min_width=60, visible=False, elem_id="settings-expand-col") as hidden_settings_column:
+                show_settings = gr.Button(value="⚙ Settings", size="sm")
 
         def _toggle_gated(models: List[str]) -> Dict[gr.component, Dict[Any, Any]]:
             """" Event listener to toggle local models displayed to the user. """
@@ -574,24 +597,6 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
         mtx_hide.click(_toggle_info, [mtx_hide], [context, metrics, docs, ctx_show, ctx_hide, mtx_show, mtx_hide, doc_show, doc_hide])
         doc_show.click(_toggle_info, [doc_show], [context, metrics, docs, ctx_show, ctx_hide, mtx_show, mtx_hide, doc_show, doc_hide])
         doc_hide.click(_toggle_info, [doc_hide], [context, metrics, docs, ctx_show, ctx_hide, mtx_show, mtx_hide, doc_show, doc_hide])
-
-        def _toggle_hide_out_tools() -> Dict[gr.component, Dict[Any, Any]]:
-            """ Event listener to hide output toolbar from the user. """
-            return {
-                out_tabs: gr.update(visible=False, selected=0),
-                out_tabs_show: gr.update(visible=True),
-            }
-
-        hide_out_tools.select(_toggle_hide_out_tools, None, [out_tabs, out_tabs_show])
-
-        def _toggle_show_out_tools() -> Dict[gr.component, Dict[Any, Any]]:
-            """ Event listener to expand output toolbar for the user. """
-            return {
-                out_tabs: gr.update(visible=True),
-                out_tabs_show: gr.update(visible=False),
-            }
-
-        out_tabs_show.click(_toggle_show_out_tools, None, [out_tabs, out_tabs_show])
 
         def _toggle_hide_all_settings() -> Dict[gr.component, Dict[Any, Any]]:
             """ Event listener to hide inference settings pane from the user. """
@@ -958,11 +963,15 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                     inf_settings: gr.update(visible=True, interactive=True),
                     vdb_settings: gr.update(visible=True, interactive=True),
                     launcher_settings: gr.update(interactive=True),
+                    params_settings: gr.update(interactive=True),
                     submit_btn: gr.update(value="Submit", interactive=True),
                     hide_all_settings: gr.update(visible=True),
                     msg: gr.update(interactive=True, placeholder="Enter text and press SUBMIT"),
                     settings_tabs: gr.update(selected=1),
                     tabs: gr.update(selected=2),
+                    # Collapse settings so the chat area takes full width
+                    settings_column: gr.update(visible=False),
+                    hidden_settings_column: gr.update(visible=True),
                 }
             else:
                 gr.Warning("RAG backend failed to start. Ensure the NIM container is running, then try again.")
@@ -971,14 +980,17 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                     inf_settings: gr.update(visible=True, interactive=False),
                     vdb_settings: gr.update(visible=True, interactive=False),
                     launcher_settings: gr.update(interactive=False),
+                    params_settings: gr.update(interactive=False),
                     submit_btn: gr.update(value="[NOT READY] Submit", interactive=False),
                     hide_all_settings: gr.update(visible=False),
                     msg: gr.update(interactive=False, placeholder="[NOT READY] Ensure the NIM container is running, then click Set Up RAG Backend."),
                     settings_tabs: gr.update(selected=0),
                     tabs: gr.update(selected=2),
+                    settings_column: gr.update(visible=True),
+                    hidden_settings_column: gr.update(visible=False),
                 }
 
-        rag_start_button.click(_toggle_rag_start, [rag_start_button], [setup_settings, inf_settings, vdb_settings, launcher_settings, submit_btn, hide_all_settings, msg, settings_tabs, tabs])
+        rag_start_button.click(_toggle_rag_start, [rag_start_button], [setup_settings, inf_settings, vdb_settings, launcher_settings, params_settings, submit_btn, hide_all_settings, msg, settings_tabs, tabs, settings_column, hidden_settings_column])
 
         # form actions
         _my_build_stream = functools.partial(_stream_predict, client)
@@ -1038,6 +1050,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                     inf_settings: gr.update(visible=True, interactive=True),
                     vdb_settings: gr.update(visible=True, interactive=True),
                     launcher_settings: gr.update(interactive=True),
+                    params_settings: gr.update(interactive=True),
                     submit_btn: gr.update(value="Submit", interactive=True),
                     hide_all_settings: gr.update(visible=True),
                     msg: gr.update(interactive=True, placeholder="Enter text and press SUBMIT"),
@@ -1049,14 +1062,18 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                     nim_model_port: fetched_port,
                     nim_model_id: fetched_model,
                     fetch_models_status: gr.update(value=fetch_status),
+                    # Collapse settings panel — chat takes full width by default
+                    settings_column: gr.update(visible=False),
+                    hidden_settings_column: gr.update(visible=True),
                 }
             else:
-                # NIM not ready yet — leave the setup button visible, no error shown
+                # NIM not ready yet — keep settings visible so user can intervene
                 return {
                     setup_settings: gr.update(visible=True, interactive=True),
                     inf_settings: gr.update(visible=True, interactive=False),
                     vdb_settings: gr.update(visible=True, interactive=False),
                     launcher_settings: gr.update(interactive=False),
+                    params_settings: gr.update(interactive=False),
                     submit_btn: gr.update(value="[NOT READY] Submit", interactive=False),
                     hide_all_settings: gr.update(visible=False),
                     msg: gr.update(interactive=False, placeholder="[NOT READY] Start the NIM container, then click Set Up RAG Backend."),
@@ -1068,9 +1085,11 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                     nim_model_port: fetched_port,
                     nim_model_id: fetched_model,
                     fetch_models_status: gr.update(value=fetch_status),
+                    settings_column: gr.update(visible=True),
+                    hidden_settings_column: gr.update(visible=False),
                 }
 
-        page.load(_auto_start, None, [setup_settings, inf_settings, vdb_settings, launcher_settings, submit_btn, hide_all_settings, msg, settings_tabs, tabs, chatbot, metrics_history, nim_model_ip, nim_model_port, nim_model_id, fetch_models_status])
+        page.load(_auto_start, None, [setup_settings, inf_settings, vdb_settings, launcher_settings, params_settings, submit_btn, hide_all_settings, msg, settings_tabs, tabs, chatbot, metrics_history, nim_model_ip, nim_model_port, nim_model_id, fetch_models_status, settings_column, hidden_settings_column])
 
         # ── Local Model Launcher ──────────────────────────────────────────────
         _PROFILE_MAP = {
@@ -1502,7 +1521,7 @@ def _stream_predict(
                     chunks += (
                         f"\n\n---\n⚠️ *Response may be incomplete — the model reached the "
                         f"**{int(num_token_slider)}-token limit**. "
-                        f"Open **Show Output Tools → Max Tokens in Response** and increase the slider, "
+                        f"Open **⚙ Settings → ⚙ Parameters** and increase the Max Tokens slider, "
                         f"then ask again.*"
                     )
             except Exception:
