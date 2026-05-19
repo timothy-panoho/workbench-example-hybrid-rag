@@ -1,0 +1,1 @@
+{"schema":"v1","records":[{"type":"PROJECT","operation":"DELETED","data":[{"data":"Deleted mount '/var/run/docker.sock'","mime":"text/plain"}],"important":null},{"type":"PROJECT","operation":"CREATED","data":[{"data":"Created mount '/var/run/docker.sock/'","mime":"text/plain"}],"important":null}]}
