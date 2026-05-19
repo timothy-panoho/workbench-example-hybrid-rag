@@ -4,14 +4,6 @@ CHAIN_SERVER_CMD="$HOME/.conda/envs/api-env/bin/python -m uvicorn chain_server.s
 PROFILE_FILE="/project/.model-profile"
 PYTHON="$HOME/.conda/envs/ui-env/bin/python3"
 
-# ── Fix Docker socket permissions ─────────────────────────────────────────────
-# LD_LIBRARY_PATH from conda overrides even /usr/bin/curl, so we use Python
-# for all HTTP checks.  For Docker, the socket is mounted rw but the workbench
-# user needs group access — chmod it via passwordless sudo on every startup.
-if [ -S /var/run/docker.sock ]; then
-    sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
-fi
-
 # ── HTTP helper (avoids libcurl/conda conflict) ────────────────────────────────
 http_status() {
     # Returns the HTTP status code for a URL, or 000 on error/timeout.
