@@ -2,26 +2,41 @@
 
 CHAIN_SERVER_CMD="$HOME/.conda/envs/api-env/bin/python -m uvicorn chain_server.server:app --port=8000 --host=0.0.0.0"
 PROFILE_FILE="/project/.model-profile"
-CURL=/usr/bin/curl
+PYTHON="$HOME/.conda/envs/ui-env/bin/python3"
 
 # ── Fix Docker socket permissions ─────────────────────────────────────────────
-# The workbench user is not in the docker group by default.  The socket is
-# bind-mounted rw, so a one-line chmod (via passwordless sudo) makes it
-# accessible without a full environment rebuild.
-if [ -S /var/run/docker.sock ] && ! docker info >/dev/null 2>&1; then
-    echo "Fixing Docker socket permissions..."
+# LD_LIBRARY_PATH from conda overrides even /usr/bin/curl, so we use Python
+# for all HTTP checks.  For Docker, the socket is mounted rw but the workbench
+# user needs group access — chmod it via passwordless sudo on every startup.
+if [ -S /var/run/docker.sock ]; then
     sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
 fi
+
+# ── HTTP helper (avoids libcurl/conda conflict) ────────────────────────────────
+http_status() {
+    # Returns the HTTP status code for a URL, or 000 on error/timeout.
+    $PYTHON - "$1" <<'PYEOF' 2>/dev/null
+import sys, urllib.request
+try:
+    code = urllib.request.urlopen(sys.argv[1], timeout=3).getcode()
+    print(code)
+except Exception:
+    print("000")
+PYEOF
+}
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 start_chain_server() {
     echo "Starting chain server..."
+    # Kill any stale chain server process to avoid "address already in use"
+    pkill -f "uvicorn chain_server" 2>/dev/null || true
+    sleep 1
     cd /project/code/ && $CHAIN_SERVER_CMD &
 
     ATTEMPTS=0
     MAX_ATTEMPTS=30
-    while [ "$($CURL -o /dev/null -s -w "%{http_code}" "http://localhost:8000/health")" != "200" ]; do
+    while [ "$(http_status http://localhost:8000/health)" != "200" ]; do
         ATTEMPTS=$((ATTEMPTS+1))
         if [ "$ATTEMPTS" -eq "$MAX_ATTEMPTS" ]; then
             echo "Max attempts reached ($MAX_ATTEMPTS). Chain server failed to start."
@@ -54,13 +69,13 @@ auto_launch_model() {
 if pgrep -x "milvus" > /dev/null; then
 
     # Milvus already running — make sure chain server is also up
-    if [[ "$($CURL -o /dev/null -s -w "%{http_code}" --max-time 3 "http://localhost:8000/health")" != "200" ]]; then
+    if [ "$(http_status http://localhost:8000/health)" != "200" ]; then
         echo "Chain server not responding — restarting..."
         start_chain_server
     fi
 
     # Check Milvus REST API
-    if [[ "$($CURL -o /dev/null -s -w "%{http_code}" --max-time 3 "http://localhost:19530/v1/vector/collections")" != "200" ]]; then
+    if [ "$(http_status http://localhost:19530/v1/vector/collections)" != "200" ]; then
         echo "Error: Milvus REST API not responding."
         exit 2
     fi

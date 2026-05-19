@@ -11,6 +11,12 @@
 
 set -e
 
+# Fix Docker socket permissions if needed (conda LD_LIBRARY_PATH can break
+# the system curl, so we check docker directly here instead).
+if [ -S /var/run/docker.sock ]; then
+    sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
+fi
+
 PROFILE="${1:-}"
 HF_MODEL="${2:-}"
 COMPOSE_FILE="/project/compose.yaml"
