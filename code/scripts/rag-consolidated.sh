@@ -2,6 +2,16 @@
 
 CHAIN_SERVER_CMD="$HOME/.conda/envs/api-env/bin/python -m uvicorn chain_server.server:app --port=8000 --host=0.0.0.0"
 PROFILE_FILE="/project/.model-profile"
+CURL=/usr/bin/curl
+
+# ── Fix Docker socket permissions ─────────────────────────────────────────────
+# The workbench user is not in the docker group by default.  The socket is
+# bind-mounted rw, so a one-line chmod (via passwordless sudo) makes it
+# accessible without a full environment rebuild.
+if [ -S /var/run/docker.sock ] && ! docker info >/dev/null 2>&1; then
+    echo "Fixing Docker socket permissions..."
+    sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
+fi
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -11,7 +21,7 @@ start_chain_server() {
 
     ATTEMPTS=0
     MAX_ATTEMPTS=30
-    while [ "$(/usr/bin//usr/bin/curl -o /dev/null -s -w "%{http_code}" "http://localhost:8000/health")" != "200" ]; do
+    while [ "$($CURL -o /dev/null -s -w "%{http_code}" "http://localhost:8000/health")" != "200" ]; do
         ATTEMPTS=$((ATTEMPTS+1))
         if [ "$ATTEMPTS" -eq "$MAX_ATTEMPTS" ]; then
             echo "Max attempts reached ($MAX_ATTEMPTS). Chain server failed to start."
@@ -44,13 +54,13 @@ auto_launch_model() {
 if pgrep -x "milvus" > /dev/null; then
 
     # Milvus already running — make sure chain server is also up
-    if [[ "$(/usr/bin/curl -o /dev/null -s -w "%{http_code}" --max-time 3 "http://localhost:8000/health")" != "200" ]]; then
+    if [[ "$($CURL -o /dev/null -s -w "%{http_code}" --max-time 3 "http://localhost:8000/health")" != "200" ]]; then
         echo "Chain server not responding — restarting..."
         start_chain_server
     fi
 
     # Check Milvus REST API
-    if [[ "$(/usr/bin/curl -o /dev/null -s -w "%{http_code}" --max-time 3 "http://localhost:19530/v1/vector/collections")" != "200" ]]; then
+    if [[ "$($CURL -o /dev/null -s -w "%{http_code}" --max-time 3 "http://localhost:19530/v1/vector/collections")" != "200" ]]; then
         echo "Error: Milvus REST API not responding."
         exit 2
     fi
