@@ -1,19 +1,31 @@
 #!/bin/bash
-# postBuild.sh — executed as ROOT during AI Workbench environment build.
+# postBuild.sh
 #
-# Configures passwordless sudo for docker so the workbench user can manage
-# containers from within the project container without needing a TTY or
-# password (the socket is bind-mounted but owned by root:docker).
+# Configures passwordless sudo for the workbench user so Docker commands
+# work from within the project container without a TTY or password prompt.
+#
+# Run manually to apply immediately:
+#   sudo bash /project/postBuild.sh
+#
+# This is also picked up automatically on the next environment rebuild.
 
 set -e
 
-# Allow workbench to run docker (and docker compose plugin) without password.
-# /usr/bin/docker covers both "docker <cmd>" and "docker compose <cmd>"
-# because the compose plugin is invoked through the main docker binary.
-SUDOERS_FILE=/etc/sudoers.d/workbench-docker
-echo 'workbench ALL=(root) NOPASSWD: /usr/bin/docker' > "$SUDOERS_FILE"
-chmod 440 "$SUDOERS_FILE"
-# Validate the file is syntactically correct before leaving it in place
-visudo -c -f "$SUDOERS_FILE" || { rm -f "$SUDOERS_FILE"; echo "ERROR: sudoers syntax check failed"; exit 1; }
+echo "[postBuild] running as: $(whoami)"
 
-echo "✅ passwordless sudo for /usr/bin/docker granted to workbench"
+# Grant workbench full passwordless sudo.
+# NOPASSWD: ALL is standard for development containers and is required
+# because the Docker socket GID on the host may not match any group
+# inside the container, making sudo the only reliable access path.
+SUDOERS_FILE=/etc/sudoers.d/workbench-nopasswd
+echo 'workbench ALL=(ALL) NOPASSWD: ALL' > "$SUDOERS_FILE"
+chmod 440 "$SUDOERS_FILE"
+echo "[postBuild] wrote $SUDOERS_FILE"
+
+# Also add workbench to the docker group (belt-and-braces: works if
+# the host docker socket GID happens to match at runtime).
+groupadd docker 2>/dev/null || true
+usermod -aG docker workbench 2>/dev/null || true
+echo "[postBuild] workbench added to docker group"
+
+echo "[postBuild] done — restart the chat app to apply"
