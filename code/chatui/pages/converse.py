@@ -42,6 +42,9 @@ import uuid
 _LOGGER = logging.getLogger(__name__)
 PATH = "/"
 TITLE = "Hybrid RAG: Chat UI"
+# Absolute path to docker — ~/.local/bin is not in sudo's secure PATH
+# so we must use the full path whenever calling sudo docker.
+_DOCKER = "/home/workbench/.local/bin/docker"
 OUTPUT_TOKENS = 1024
 MAX_DOCS = 5
 
@@ -1267,7 +1270,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
         def _refresh_logs(container_name):
             """Tail the last 60 lines from the selected model container."""
             result = subprocess.run(
-                ["sudo", "-n", "-E", "docker", "logs", "--tail", "60", container_name],
+                ["sudo", "-n", _DOCKER, "logs", "--tail", "60", container_name],
                 capture_output=True, text=True, timeout=15,
             )
             output = (result.stdout or "") + (result.stderr or "")
@@ -1300,7 +1303,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
         def _ollama_running():
             """Return True if local-ollama is running."""
             chk = subprocess.run(
-                ["sudo", "-n", "-E", "docker", "inspect", "local-ollama", "--format", "{{.State.Running}}"],
+                ["sudo", "-n", _DOCKER, "inspect", "local-ollama", "--format", "{{.State.Running}}"],
                 capture_output=True, text=True, timeout=5,
             )
             return chk.returncode == 0 and chk.stdout.strip() == "true"
@@ -1310,7 +1313,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
             if not _ollama_running():
                 return gr.update(choices=[], value=None), "❌ No Ollama container running — launch the ollama profile first"
             lst = subprocess.run(
-                ["sudo", "-n", "-E", "docker", "exec", "local-ollama", "ollama", "list"],
+                ["sudo", "-n", _DOCKER, "exec", "local-ollama", "ollama", "list"],
                 capture_output=True, text=True, timeout=10,
             )
             if lst.returncode == 0:
@@ -1340,7 +1343,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                 return gr.update(value="❌ Enter a model name to pull")
             if not _ollama_running():
                 return gr.update(value="❌ No Ollama container running — launch the ollama profile first")
-            subprocess.Popen(["sudo", "-n", "-E", "docker", "exec", "local-ollama", "ollama", "pull", model_name.strip()])
+            subprocess.Popen(["sudo", "-n", _DOCKER, "exec", "local-ollama", "ollama", "pull", model_name.strip()])
             return gr.update(
                 value=f"⏳ Pulling '{model_name}' — open Container Logs and click 🔄 Refresh to track progress. "
                       f"Click 🔄 Refresh above when done to add it to the model list."
@@ -1350,13 +1353,13 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
         def _refresh_hf_cache():
             """List models already downloaded in the vLLM HF cache volume."""
             chk = subprocess.run(
-                ["sudo", "-n", "-E", "docker", "inspect", "local-hf", "--format", "{{.State.Running}}"],
+                ["sudo", "-n", _DOCKER, "inspect", "local-hf", "--format", "{{.State.Running}}"],
                 capture_output=True, text=True, timeout=5,
             )
             if chk.returncode != 0 or chk.stdout.strip() != "true":
                 return "", "❌ local-hf container not running — launch the hf profile first"
             ls = subprocess.run(
-                ["sudo", "-n", "-E", "docker", "exec", "local-hf", "ls", "/root/.cache/huggingface/hub/"],
+                ["sudo", "-n", _DOCKER, "exec", "local-hf", "ls", "/root/.cache/huggingface/hub/"],
                 capture_output=True, text=True, timeout=10,
             )
             if ls.returncode != 0:
@@ -1394,7 +1397,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
             for _profile, host, port in unique_candidates:
                 # First check if the container is actually running
                 chk = subprocess.run(
-                    ["sudo", "-n", "-E", "docker", "inspect", host, "--format", "{{.State.Running}}"],
+                    ["sudo", "-n", _DOCKER, "inspect", host, "--format", "{{.State.Running}}"],
                     capture_output=True, text=True, timeout=5,
                 )
                 container_up = chk.returncode == 0 and chk.stdout.strip() == "true"

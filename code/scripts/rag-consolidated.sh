@@ -3,6 +3,7 @@
 CHAIN_SERVER_CMD="$HOME/.conda/envs/api-env/bin/python -m uvicorn chain_server.server:app --port=8000 --host=0.0.0.0"
 PROFILE_FILE="/project/.model-profile"
 PYTHON="$HOME/.conda/envs/ui-env/bin/python3"
+DOCKER=/home/workbench/.local/bin/docker
 
 # ── HTTP helper (avoids libcurl/conda conflict) ────────────────────────────────
 http_status() {
@@ -42,7 +43,7 @@ start_chain_server() {
 
 auto_launch_model() {
     # If Docker is available and a profile was previously chosen, restart it.
-    if ! command -v docker >/dev/null 2>&1; then
+    if [ ! -x "$DOCKER" ]; then
         return
     fi
     if [ ! -f "$PROFILE_FILE" ]; then
