@@ -20,6 +20,19 @@ printf 'Defaults env_keep += "PATH"\nworkbench ALL=(ALL) NOPASSWD: ALL\n' > "$SU
 chmod 440 "$SUDOERS_FILE"
 echo "[postBuild] wrote $SUDOERS_FILE"
 
+# Install docker compose plugin system-wide so "sudo docker compose" works.
+# When sudo runs as root, HOME=/root and the plugin in ~/.docker/cli-plugins
+# is invisible.  Copying it to /usr/local/lib/docker/cli-plugins makes it
+# available regardless of which user invokes docker.
+COMPOSE_SRC=/home/workbench/.docker/cli-plugins/docker-compose
+COMPOSE_DST=/usr/local/lib/docker/cli-plugins/docker-compose
+if [ -f "$COMPOSE_SRC" ]; then
+    mkdir -p "$(dirname $COMPOSE_DST)"
+    cp "$COMPOSE_SRC" "$COMPOSE_DST"
+    chmod +x "$COMPOSE_DST"
+    echo "[postBuild] compose plugin installed to $COMPOSE_DST"
+fi
+
 # Belt-and-braces: add workbench to the docker group in case the host
 # socket GID matches at runtime.
 groupadd docker 2>/dev/null || true
