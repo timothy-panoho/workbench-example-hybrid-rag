@@ -9,7 +9,7 @@
 #                                      #   default: google/gemma-3-4b-it
 #   launch-model.sh stop               # stop all profile containers
 #
-# Note: all docker / docker compose calls use "sudo docker" because the
+# Note: all docker / docker compose calls use "sudo -n -E docker" because the
 # workbench user is not in the docker group but has passwordless sudo.
 
 set -e
@@ -28,10 +28,10 @@ fi
 
 if [ "$PROFILE" = "stop" ]; then
     for c in local-ollama local-nim-llama local-hf; do
-        if sudo docker inspect "$c" >/dev/null 2>&1; then
+        if sudo -n -E docker inspect "$c" >/dev/null 2>&1; then
             echo "Stopping $c..."
-            sudo docker stop "$c" 2>/dev/null || true
-            sudo docker rm   "$c" 2>/dev/null || true
+            sudo -n -E docker stop "$c" 2>/dev/null || true
+            sudo -n -E docker rm   "$c" 2>/dev/null || true
         fi
     done
     echo "All local model containers stopped."
@@ -50,16 +50,16 @@ if [ "$PROFILE" = "hf" ]; then
 fi
 
 # Ensure the shared network exists before compose tries to use it (external: true)
-sudo docker network create "$NETWORK" 2>/dev/null || true
+sudo -n -E docker network create "$NETWORK" 2>/dev/null || true
 
 # Stop any running model containers by name.
 # (docker compose down would silently do nothing because the compose project name
 # differs between the host and inside this container — stop by name is reliable.)
 for c in local-ollama local-nim-llama local-hf; do
-    if sudo docker inspect "$c" >/dev/null 2>&1; then
+    if sudo -n -E docker inspect "$c" >/dev/null 2>&1; then
         echo "Stopping $c..."
-        sudo docker stop "$c" 2>/dev/null || true
-        sudo docker rm   "$c" 2>/dev/null || true
+        sudo -n -E docker stop "$c" 2>/dev/null || true
+        sudo -n -E docker rm   "$c" 2>/dev/null || true
     fi
 done
 
@@ -69,7 +69,7 @@ done
 PROJECT_NAME="timothy-panoho-workbench-example-hybrid-rag"
 
 # Start the requested profile using the correct project name
-sudo docker compose \
+sudo -n -E docker compose \
     -f "$COMPOSE_FILE" \
     --env-file "$ENV_FILE" \
     --project-name "$PROJECT_NAME" \
@@ -77,6 +77,6 @@ sudo docker compose \
     up -d
 
 # Connect the project container to the model network (idempotent)
-sudo docker network connect "$NETWORK" "$CONTAINER" 2>/dev/null || true
+sudo -n -E docker network connect "$NETWORK" "$CONTAINER" 2>/dev/null || true
 
 echo "Profile '$PROFILE' is up (project: $PROJECT_NAME) and network '$NETWORK' is connected."
