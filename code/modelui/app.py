@@ -41,20 +41,6 @@ def _container_running(name: str) -> bool:
     return result.stdout.strip().lower() == "true"
 
 
-def _container_port(name: str) -> Optional[str]:
-    """Return the first exposed host port for a container."""
-    result = _run(DOCKER + ["inspect", "--format", "{{json .NetworkSettings.Ports}}", name])
-    if result.returncode != 0:
-        return None
-    try:
-        ports = json.loads(result.stdout.strip())
-        for bindings in ports.values():
-            if bindings:
-                return bindings[0].get("HostPort")
-    except Exception:
-        pass
-    return None
-
 
 def _fetch_models(host: str, port: str) -> list[str]:
     try:
@@ -120,8 +106,9 @@ def create_app(proxy_prefix: str = "") -> FastAPI:
             running = _container_running(name)
             models: list[str] = []
             if running:
-                port = _container_port(name) or "8000"
-                models = _fetch_models(name, port)
+                # Use port 8000 — all model containers expose the API on :8000 internally.
+                # Resolve by container name via the shared hybrid-rag Docker network.
+                models = _fetch_models(name, "8000")
             containers[name] = {"running": running, "models": models}
 
         # Chain server health
@@ -230,7 +217,7 @@ def create_app(proxy_prefix: str = "") -> FastAPI:
         cmd = [script, req.profile]
         if req.hf_model:
             cmd.append(req.hf_model)
-        result = _run(cmd, timeout=30)
+        result = _run(cmd, timeout=60)
         return JSONResponse({
             "status": "launched" if result.returncode == 0 else "error",
             "output": result.stdout + result.stderr,

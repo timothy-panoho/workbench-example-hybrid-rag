@@ -39,6 +39,17 @@ if [ "$PROFILE" = "stop" ]; then
     exit 0
 fi
 
+# ── Map friendly profile names → compose profile + optional Ollama model pull ──
+# gemma / qwen3 both start the Ollama container (compose profile "ollama")
+# and then automatically pull the right model into it.
+OLLAMA_PULL_MODEL=""
+case "$PROFILE" in
+  gemma)  COMPOSE_PROFILE=ollama; OLLAMA_PULL_MODEL="gemma3:4b"  ;;
+  qwen3)  COMPOSE_PROFILE=ollama; OLLAMA_PULL_MODEL="qwen3:4b"   ;;
+  ollama) COMPOSE_PROFILE=ollama ;;
+  *)      COMPOSE_PROFILE="$PROFILE" ;;
+esac
+
 # ── For the hf (vLLM) profile, pass model ID via exported env var ──────────────
 # /project/.env is on a read-only bind-mount inside the container so we cannot
 # write to it.  Exporting the variable into the shell environment is equivalent:
@@ -74,8 +85,27 @@ sudo -n $DOCKER compose \
     -f "$COMPOSE_FILE" \
     --env-file "$ENV_FILE" \
     --project-name "$PROJECT_NAME" \
-    --profile "$PROFILE" \
+    --profile "$COMPOSE_PROFILE" \
     up -d
+
+# Auto-pull the Ollama model if requested (gemma / qwen3 shortcuts).
+# Run in background so the script returns immediately; monitor pull progress
+# in the Model Manager → Models → Ollama → Refresh.
+if [ -n "$OLLAMA_PULL_MODEL" ]; then
+    (
+        echo "[pull] waiting for Ollama to be ready..."
+        for i in $(seq 1 30); do
+            if sudo -n $DOCKER exec local-ollama ollama list >/dev/null 2>&1; then
+                break
+            fi
+            sleep 2
+        done
+        echo "[pull] pulling $OLLAMA_PULL_MODEL..."
+        sudo -n $DOCKER exec local-ollama ollama pull "$OLLAMA_PULL_MODEL" || \
+            echo "[pull] Warning: non-zero exit (model may already exist)"
+    ) &
+    echo "Container started. Pull of $OLLAMA_PULL_MODEL running in background — check Models tab for progress."
+fi
 
 # Connect the project container to the model network (idempotent)
 sudo -n $DOCKER network connect "$NETWORK" "$CONTAINER" 2>/dev/null || true

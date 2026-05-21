@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Model Manager — NVIDIA Workbench</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="static/style.css">
   <!-- Inter font -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -47,7 +47,7 @@
     <!-- ===================== DASHBOARD ===================== -->
     <section id="tab-dashboard" class="tab-panel active">
 
-      <div class="section-header mb-20">
+      <div class="section-header mb-8">
         <span class="section-title">Cluster Status</span>
         <div class="flex gap-8">
           <button id="refresh-toggle" class="btn btn-secondary">▶ Auto-refresh</button>
@@ -56,6 +56,7 @@
           <button id="stop-btn"       class="btn btn-danger">⏹ Stop All</button>
         </div>
       </div>
+      <div id="launch-status" class="status-msg mb-20"></div>
 
       <!-- Container status cards -->
       <div id="container-cards" class="card-row"></div>
@@ -235,6 +236,6 @@
   </main>
 </div>
 
-<script src="/static/app.js"></script>
+<script src="static/app.js"></script>
 </body>
 </html>

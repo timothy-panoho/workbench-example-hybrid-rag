@@ -43,8 +43,11 @@ function initTabs() {
 /* ================================================================
    Utility helpers
    ================================================================ */
+// Strip any leading slash so paths stay relative and work behind the Workbench proxy
+function _rel(path) { return path.replace(/^\//, ""); }
+
 async function apiFetch(path, opts = {}) {
-  const resp = await fetch(path, opts);
+  const resp = await fetch(_rel(path), opts);
   if (!resp.ok) {
     const text = await resp.text();
     throw new Error(`HTTP ${resp.status}: ${text}`);
@@ -307,17 +310,8 @@ async function fetchChatModels() {
   const port  = document.getElementById("chat-port").value.trim() || "8000";
   setStatus("chat-status", "Fetching models…");
   try {
-    const resp = await fetch(`/api/chat`, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        host, port: parseInt(port),
-        model: "__list__",
-        messages: [],
-      }),
-    });
-    // Actually call /v1/models via dedicated path
-    const data = await apiFetch(`/api/status`);
+    // Use the status endpoint to read which models are loaded for the given host
+    const data = await apiFetch("api/status");
     // Get models from container matching host name
     const containers = data.containers || {};
     const container = containers[host] || {};
@@ -381,7 +375,7 @@ async function sendChat() {
   let fullText = "";
 
   try {
-    const resp = await fetch("/api/chat/stream", {
+    const resp = await fetch(_rel("/api/chat/stream"), {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({host, port, model, messages: chatMessages, temperature, max_tokens}),
@@ -515,30 +509,100 @@ async function loadLogs() {
    Launch / Stop actions
    ================================================================ */
 async function launchModel() {
-  const profile = prompt("Enter launch profile (e.g. ollama, nim-llama, hf):", "ollama");
+  // Build a simple inline dialog instead of relying on browser prompt()
+  const PROFILES = ["gemma", "qwen3", "llama", "hf"];
+  const profile = await showPickDialog(
+    "Launch model profile",
+    "Choose a runtime to start:",
+    PROFILES,
+  );
   if (!profile) return;
-  const hfModel = profile === "hf" ? prompt("HuggingFace model ID:", "") : null;
+
+  let hfModel = null;
+  if (profile === "hf") {
+    hfModel = await showInputDialog(
+      "HuggingFace model ID",
+      "Enter a model ID (e.g. google/gemma-3-4b-it):",
+      "google/gemma-3-4b-it",
+    );
+    if (hfModel === null) return;  // cancelled
+  }
+
+  setStatus("launch-status", `Launching ${profile}…`, "text-accent");
   try {
-    const data = await apiFetch("/api/launch", {
+    const data = await apiFetch("api/launch", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({profile, hf_model: hfModel || undefined}),
     });
-    alert(data.status + "\n" + data.output);
+    setStatus("launch-status",
+      data.status === "launched" ? `✔ ${profile} launched` : `⚠ ${data.output}`,
+      data.status === "launched" ? "text-success" : "text-danger");
     loadDashboard();
   } catch (err) {
-    alert("Launch error: " + err.message);
+    setStatus("launch-status", "Launch error: " + err.message, "text-danger");
   }
+}
+
+/* Tiny promise-based pick dialog (avoids browser prompt) */
+function showPickDialog(title, body, options) {
+  return new Promise(resolve => {
+    const overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center";
+    const box = document.createElement("div");
+    box.style.cssText = "background:#1e1e2a;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:24px;min-width:300px;max-width:90vw";
+    box.innerHTML = `<div style="font-weight:600;margin-bottom:8px">${title}</div>
+      <div style="color:#7a7a8c;font-size:13px;margin-bottom:16px">${body}</div>
+      <div id="pick-opts" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px"></div>
+      <button id="pick-cancel" class="btn btn-ghost" style="width:100%">Cancel</button>`;
+    const opts = box.querySelector("#pick-opts");
+    options.forEach(o => {
+      const b = document.createElement("button");
+      b.className = "btn btn-secondary"; b.textContent = o;
+      b.onclick = () => { document.body.removeChild(overlay); resolve(o); };
+      opts.appendChild(b);
+    });
+    box.querySelector("#pick-cancel").onclick = () => { document.body.removeChild(overlay); resolve(null); };
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+  });
+}
+
+function showInputDialog(title, body, placeholder) {
+  return new Promise(resolve => {
+    const overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center";
+    const box = document.createElement("div");
+    box.style.cssText = "background:#1e1e2a;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:24px;min-width:320px;max-width:90vw";
+    box.innerHTML = `<div style="font-weight:600;margin-bottom:8px">${title}</div>
+      <div style="color:#7a7a8c;font-size:13px;margin-bottom:12px">${body}</div>
+      <input id="dlg-input" type="text" placeholder="${placeholder}" style="width:100%;margin-bottom:12px">
+      <div style="display:flex;gap:8px">
+        <button id="dlg-ok" class="btn btn-primary" style="flex:1">OK</button>
+        <button id="dlg-cancel" class="btn btn-ghost" style="flex:1">Cancel</button>
+      </div>`;
+    const input = box.querySelector("#dlg-input");
+    input.value = placeholder;
+    box.querySelector("#dlg-ok").onclick = () => { document.body.removeChild(overlay); resolve(input.value.trim() || placeholder); };
+    box.querySelector("#dlg-cancel").onclick = () => { document.body.removeChild(overlay); resolve(null); };
+    input.addEventListener("keydown", e => { if (e.key === "Enter") box.querySelector("#dlg-ok").click(); });
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    setTimeout(() => input.focus(), 50);
+  });
 }
 
 async function stopAll() {
   if (!confirm("Stop all model containers?")) return;
+  setStatus("launch-status", "Stopping all containers…", "text-accent");
   try {
-    const data = await apiFetch("/api/stop", {method: "POST"});
-    alert(data.status + "\n" + data.output);
+    const data = await apiFetch("api/stop", {method: "POST"});
+    setStatus("launch-status",
+      data.status === "stopped" ? "✔ All containers stopped" : `⚠ ${data.output}`,
+      data.status === "stopped" ? "text-success" : "text-danger");
     loadDashboard();
   } catch (err) {
-    alert("Stop error: " + err.message);
+    setStatus("launch-status", "Stop error: " + err.message, "text-danger");
   }
 }
 
