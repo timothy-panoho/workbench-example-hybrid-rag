@@ -13,7 +13,7 @@ from typing import Generator, Optional
 
 import requests
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -90,11 +90,16 @@ def create_app(proxy_prefix: str = "") -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     # ------------------------------------------------------------------
-    # Serve index.html at root
+    # Serve index.html at root — inject <base href> so all relative paths
+    # (CSS/JS links AND fetch() calls) resolve correctly behind the Workbench
+    # proxy regardless of whether the URL has a trailing slash.
     # ------------------------------------------------------------------
     @app.get("/")
     async def index():
-        return FileResponse(str(STATIC_DIR / "index.html"))
+        html = (STATIC_DIR / "index.html").read_text()
+        base = (proxy_prefix or "").rstrip("/") + "/"
+        html = html.replace("<head>", f'<head>\n  <base href="{base}">', 1)
+        return HTMLResponse(html)
 
     # ------------------------------------------------------------------
     # Status
