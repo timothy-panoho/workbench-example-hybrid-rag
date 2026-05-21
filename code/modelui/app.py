@@ -84,7 +84,11 @@ class ChatRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 def create_app(proxy_prefix: str = "") -> FastAPI:
-    app = FastAPI(title="Model Manager", root_path=proxy_prefix)
+    # Do NOT pass root_path here. Workbench uses trim_prefix:true, so the proxy
+    # already strips the prefix before forwarding — FastAPI sees clean paths and
+    # StaticFiles routing works correctly. The proxy prefix is only needed for
+    # injecting <base href> into index.html (done in the GET / handler below).
+    app = FastAPI(title="Model Manager")
 
     # Mount static files
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
