@@ -134,27 +134,48 @@ def create_app(proxy_prefix: str = "") -> FastAPI:
         })
 
     # ------------------------------------------------------------------
-    # GPU info
+    # GPU info — the project container has gpu.requested=0 so nvidia-smi
+    # isn't available directly.  Instead, exec into whichever model container
+    # is running (they all have GPU access) and query from there.
     # ------------------------------------------------------------------
     @app.get("/api/gpu")
     async def api_gpu():
         query = "index,name,memory.total,memory.used,memory.free,utilization.gpu"
-        result = _run(
-            ["nvidia-smi", f"--query-gpu={query}", "--format=csv,noheader,nounits"],
-            timeout=10,
-        )
+        smi_args = [
+            "nvidia-smi",
+            f"--query-gpu={query}",
+            "--format=csv,noheader,nounits",
+        ]
+
+        # Try running nvidia-smi via each known model container in turn
+        result = None
+        for container in KNOWN_CONTAINERS:
+            probe = _run(DOCKER + ["inspect", "--format", "{{.State.Running}}", container], timeout=5)
+            if probe.stdout.strip().lower() != "true":
+                continue
+            r = _run(DOCKER + ["exec", container] + smi_args, timeout=8)
+            if r.returncode == 0:
+                result = r
+                break
+
+        # Fall back to a direct call (works if host GPU is visible in the container)
+        if result is None:
+            result = _run(smi_args, timeout=5)
+
         gpus = []
-        if result.returncode == 0:
+        if result and result.returncode == 0:
             for line in result.stdout.strip().splitlines():
                 parts = [p.strip() for p in line.split(",")]
                 if len(parts) >= 6:
+                    def _int(v: str) -> int:
+                        return int(v) if v.lstrip("-").isdigit() else 0
                     gpus.append({
-                        "index": parts[0],
-                        "name": parts[1],
-                        "total_mb": int(parts[2]) if parts[2].isdigit() else 0,
-                        "used_mb": int(parts[3]) if parts[3].isdigit() else 0,
-                        "free_mb": int(parts[4]) if parts[4].isdigit() else 0,
-                        "utilization": int(parts[5]) if parts[5].isdigit() else 0,
+                        "index":       parts[0],
+                        "name":        parts[1],
+                        "total_mb":    _int(parts[2]),
+                        "used_mb":     _int(parts[3]),
+                        "free_mb":     _int(parts[4]),
+                        "utilization": _int(parts[5]),
                     })
         return JSONResponse({"gpus": gpus})
 
