@@ -206,11 +206,11 @@ def preset_max_tokens() -> str:
     gb = inf_mem/(2**30)
     
     if gb >= 40:
-        return 512, 2048
+        return 1024, 8192
     elif gb >= 24:
-        return 512, 1024
+        return 1024, 4096   # RTX 4090 24 GB — plenty of headroom for a 4B model
     else:
-        return 256, 512
+        return 512, 2048
 
 def clear_knowledge_base() -> bool:
     """

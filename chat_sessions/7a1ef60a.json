@@ -1,0 +1,44 @@
+{
+  "id": "7a1ef60a",
+  "name": "Chat May 18 14:35",
+  "created_at": "2026-05-18T14:35:25.787488",
+  "updated_at": "2026-05-18T14:38:04.787968",
+  "history": [
+    [
+      "what are some good bread recipes? ",
+      "Okay, let\u2019s explore some wonderful bread recipes! There are so many delicious options, and I\u2019ll give you a range of difficulty levels and flavors. Here are some great ideas, categorized for easier browsing:\n\n**For Beginners - Easy & Reliable:**\n\n1.  **No-Knead Bread:** (https://www.kingarthurbaking.com/recipes/no-knead-bread-recipe) \u2013 Seriously, this is a fantastic starting point. It requires minimal effort and produces a beautiful, crusty loaf. It\u2019s a great way to learn the basics of bread making without stressing about kneading.\n\n2.  **Simple White Bread:** (https://sallysbakingaddiction.com/easy-white-bread/) \u2013 A classic for a reason! This recipe is straightforward and yields a soft, fluffy loaf perfect for sandwiches.\n\n3.  **Soda Bread:** (https://www.allrecipes.com/recipe/21315/soda-bread/) \u2013 This Irish bread uses baking soda instead of yeast, making it incredibly quick and easy. It\u2019s surprisingly delicious and a great introduction to bread making.\n\n\n**Intermediate - A Little More Technique:**\n\n4.  **Sourdough Starter Bread:** (https://www.thekitchn.com/recipe/sourdough-bread-20547) \u2013  Sourdough is a rewarding process! This recipe will guide you through creating and using a sourdough starter. It takes a bit more time and attention, but the flavor is incredible.\n\n5.  **Rosemary Olive Oil Bread:** (https://www.foodnetwork.com/recipes/ina-garten/rosemary-olive-oil-bread-recipe-1944404) \u2013 This rustic loaf is infused with fragrant rosemary and olive oil, creating a wonderful aroma and flavor.\n\n6.  **Multigrain Bread:** (https://www.simplyrecipes.com/recipes/multigrain_bread/) \u2013 This is a great way to add some nutrition and texture to your bread. It requires a little more kneading, but it's worth the effort.\n\n\n\n**A Bit More Advanced - For Experienced Bakers:**\n\n7.  **Brioche:** (https://www.allrecipes.com/recipe/23787/brioche-bread/) \u2013 Brioche is a rich, buttery, and decadent bread. It\u2019s a great treat for special occasions"
+    ],
+    [
+      "what are some good steps to perfect stirato?",
+      "Here are some good steps to perfect stirato, according to the text:\n\n1.  **Stretch and Fold:** Repeat the stretch-and-fold action 12 times, incorporating the salt. Then, do one more round, totaling 14 times.\n2.  **Resting:** After the final round, cover the bowl and let the dough rest for 6 to 7 hours, allowing it to rise until it triples in size.\n3.  **Shaping:** Gently loosen the dough and pour it out onto a generously floured surface. Create a rectangle about 10 by 16 inches.\n4.  **Stretching:** Lightly grab either end of the dough and stretch it to just under the size of your baking stone.\n5.  **Cutting:** Sprinkle flour across the middle of the dough, repositioning the loaf. Cut the bake on the parchment paper the entire time."
+    ]
+  ],
+  "metrics": {
+    "0": {
+      "inference_mode": "microservice",
+      "model": "gemma3:4b",
+      "Retrieval time": "N/A",
+      "Time to First Token (TTFT)": "30249ms",
+      "Generation Time": "4576ms",
+      "End to End Time (E2E)": "34825ms",
+      "Tokens (est.)": "483 tokens",
+      "Tokens/Second (est.)": "105.6 tokens/sec",
+      "Inter-Token Latency (est.)": "9.5 ms"
+    },
+    "1": {
+      "inference_mode": "microservice",
+      "model": "gemma3:4b",
+      "Retrieval time": "591ms",
+      "Time to First Token (TTFT)": "413ms",
+      "Generation Time": "1559ms",
+      "End to End Time (E2E)": "2563ms",
+      "Tokens (est.)": "183 tokens",
+      "Tokens/Second (est.)": "117.4 tokens/sec",
+      "Inter-Token Latency (est.)": "8.5 ms"
+    }
+  },
+  "documents": [
+    "perfect loaf Stirato Baguette.pdf",
+    "Stirato current.docx"
+  ]
+}

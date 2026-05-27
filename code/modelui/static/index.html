@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Model Manager — NVIDIA Workbench</title>
+  <link rel="stylesheet" href="static/style.css">
+  <!-- Inter font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="app">
+
+  <!-- ======================================================
+       Fixed Header
+       ====================================================== -->
+  <header id="header">
+    <div id="header-left">
+      <div id="logo">NV</div>
+      <span id="title">Model <span>Manager</span></span>
+    </div>
+    <div id="header-vram">
+      <span id="header-vram-label">Loading GPU…</span>
+      <div id="header-vram-bar-wrap">
+        <div id="header-vram-bar"></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ======================================================
+       Tab Bar
+       ====================================================== -->
+  <nav id="tabbar">
+    <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+    <button class="tab-btn" data-tab="models">Models</button>
+    <button class="tab-btn" data-tab="chat">Chat</button>
+    <button class="tab-btn" data-tab="system">System</button>
+  </nav>
+
+  <!-- ======================================================
+       Content
+       ====================================================== -->
+  <main id="content">
+
+    <!-- ===================== DASHBOARD ===================== -->
+    <section id="tab-dashboard" class="tab-panel active">
+
+      <div class="section-header mb-8">
+        <span class="section-title">Cluster Status</span>
+        <div class="flex gap-8">
+          <button id="refresh-toggle" class="btn btn-secondary">▶ Auto-refresh</button>
+          <button id="refresh-now"    class="btn btn-ghost">🔄 Refresh</button>
+          <button id="launch-btn"     class="btn btn-primary">▶ Launch</button>
+          <button id="stop-btn"       class="btn btn-danger">⏹ Stop All</button>
+        </div>
+      </div>
+      <div id="launch-status" class="status-msg mb-20"></div>
+
+      <!-- Container status cards -->
+      <div id="container-cards" class="card-row"></div>
+
+    </section>
+
+    <!-- ===================== MODELS ===================== -->
+    <section id="tab-models" class="tab-panel">
+
+      <div class="section-header mb-16">
+        <span class="section-title">Model Library</span>
+      </div>
+
+      <div class="sub-tabbar">
+        <button class="sub-tab-btn active" data-group="models" data-subtab="ollama">Ollama</button>
+        <button class="sub-tab-btn"        data-group="models" data-subtab="hf">HuggingFace</button>
+      </div>
+
+      <!-- Ollama sub-panel -->
+      <div class="sub-panel active" data-group="models" data-subtab="ollama">
+
+        <!-- Pull row -->
+        <div class="card mb-16">
+          <div class="card-title">Pull a model</div>
+          <div class="flex gap-8 items-center">
+            <input type="text" id="pull-input" placeholder="e.g. llama3:8b or mistral" style="flex:1">
+            <button id="pull-btn" class="btn btn-primary">⬇ Pull</button>
+            <button id="ollama-refresh" class="btn btn-ghost">🔄 Refresh</button>
+          </div>
+          <div id="ollama-status" class="status-msg mt-12"></div>
+        </div>
+
+        <!-- Model table -->
+        <div class="card">
+          <div class="card-title">Installed models</div>
+          <table class="data-table" id="ollama-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Size</th>
+                <th>Modified</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="4" class="text-muted">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+
+      <!-- HuggingFace sub-panel -->
+      <div class="sub-panel" data-group="models" data-subtab="hf">
+        <div class="card mb-16">
+          <div class="card-title">HuggingFace Hub cache</div>
+          <p class="text-muted text-sm mb-12">
+            Reads <code>/root/.cache/huggingface/hub/</code> from the <strong>local-hf</strong> container.
+            The container must be running for this to work.
+          </p>
+          <button id="hf-refresh" class="btn btn-ghost mb-12">🔄 Refresh</button>
+          <div id="hf-status" class="status-msg mb-12"></div>
+          <ul id="hf-list" style="list-style:none; padding:0;">
+            <li class="text-muted">Click Refresh to load…</li>
+          </ul>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===================== CHAT ===================== -->
+    <section id="tab-chat" class="tab-panel">
+
+      <div id="chat-container">
+
+        <!-- Header row -->
+        <div id="chat-header">
+          <input type="text"   id="chat-host"  placeholder="Host"  value="local-ollama">
+          <input type="number" id="chat-port"  placeholder="Port"  value="8000" min="1" max="65535">
+          <select id="chat-model">
+            <option value="">-- fetch models --</option>
+          </select>
+          <button id="fetch-models-btn" class="btn btn-secondary">🔍 Fetch Models</button>
+          <button id="new-chat-btn"     class="btn btn-ghost">🗑 New Chat</button>
+          <div id="chat-status" class="status-msg"></div>
+        </div>
+
+        <!-- Messages -->
+        <div id="messages"></div>
+
+        <!-- Input row -->
+        <div id="chat-input-row">
+          <textarea id="chat-textarea" placeholder="Type a message… (Enter to send, Shift+Enter for newline)"></textarea>
+          <button id="send-btn" class="btn btn-primary" style="height:60px; padding:0 20px;">Send</button>
+        </div>
+
+        <!-- Collapsible parameters -->
+        <div id="params-toggle">▼ Parameters</div>
+        <div id="params-panel">
+          <label>
+            Temperature&nbsp;
+            <input type="range" id="temp-slider" min="0" max="1" step="0.05" value="0.7">
+            <span id="temp-val">0.7</span>
+          </label>
+          <label>
+            Max Tokens&nbsp;
+            <input type="range" id="tokens-slider" min="128" max="4096" step="64" value="1024">
+            <span id="tokens-val">1024</span>
+          </label>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ===================== SYSTEM ===================== -->
+    <section id="tab-system" class="tab-panel">
+
+      <!-- GPU Table -->
+      <div class="card mb-20">
+        <div class="section-header mb-12">
+          <span class="card-title" style="margin-bottom:0">GPU Information</span>
+          <button id="gpu-refresh" class="btn btn-ghost">🔄 Refresh</button>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Total VRAM</th>
+              <th>Used VRAM</th>
+              <th>Free VRAM</th>
+              <th>Utilization</th>
+            </tr>
+          </thead>
+          <tbody id="gpu-table-body">
+            <tr><td colspan="5" class="text-muted">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- VRAM Advisor -->
+      <div class="card mb-20">
+        <div class="card-title">VRAM Advisor — What can I run?</div>
+        <p class="text-muted text-sm mb-12">Based on current free VRAM across all GPUs.</p>
+        <table class="data-table" id="advisor-table">
+          <thead>
+            <tr>
+              <th>Model Size</th>
+              <th>Approx. VRAM</th>
+              <th>Fits?</th>
+            </tr>
+          </thead>
+          <tbody id="advisor-body">
+            <tr><td colspan="3" class="text-muted">Loading GPU data…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Container Logs -->
+      <div class="card">
+        <div class="section-header mb-12">
+          <span class="card-title" style="margin-bottom:0">Container Logs</span>
+          <div class="flex gap-8 items-center">
+            <select id="log-container-select" style="width:200px">
+              <option value="local-ollama">local-ollama</option>
+              <option value="local-nim-llama">local-nim-llama</option>
+              <option value="local-hf">local-hf</option>
+            </select>
+            <button id="log-refresh" class="btn btn-ghost">🔄 Refresh</button>
+          </div>
+        </div>
+        <pre id="log-output">Select a container and click Refresh to view logs.</pre>
+      </div>
+
+    </section>
+
+  </main>
+</div>
+
+<script src="static/app.js"></script>
+</body>
+</html>

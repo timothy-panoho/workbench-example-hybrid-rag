@@ -2,16 +2,34 @@
 
 CHAIN_SERVER_CMD="$HOME/.conda/envs/api-env/bin/python -m uvicorn chain_server.server:app --port=8000 --host=0.0.0.0"
 PROFILE_FILE="/project/.model-profile"
+PYTHON="$HOME/.conda/envs/ui-env/bin/python3"
+DOCKER=/home/workbench/.local/bin/docker
+
+# ── HTTP helper (avoids libcurl/conda conflict) ────────────────────────────────
+http_status() {
+    # Returns the HTTP status code for a URL, or 000 on error/timeout.
+    $PYTHON - "$1" <<'PYEOF' 2>/dev/null
+import sys, urllib.request
+try:
+    code = urllib.request.urlopen(sys.argv[1], timeout=3).getcode()
+    print(code)
+except Exception:
+    print("000")
+PYEOF
+}
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 start_chain_server() {
     echo "Starting chain server..."
+    # Kill any stale chain server process to avoid "address already in use"
+    pkill -f "uvicorn chain_server" 2>/dev/null || true
+    sleep 1
     cd /project/code/ && $CHAIN_SERVER_CMD &
 
     ATTEMPTS=0
     MAX_ATTEMPTS=30
-    while [ "$(curl -o /dev/null -s -w "%{http_code}" "http://localhost:8000/health")" != "200" ]; do
+    while [ "$(http_status http://localhost:8000/health)" != "200" ]; do
         ATTEMPTS=$((ATTEMPTS+1))
         if [ "$ATTEMPTS" -eq "$MAX_ATTEMPTS" ]; then
             echo "Max attempts reached ($MAX_ATTEMPTS). Chain server failed to start."
@@ -25,7 +43,7 @@ start_chain_server() {
 
 auto_launch_model() {
     # If Docker is available and a profile was previously chosen, restart it.
-    if ! command -v docker >/dev/null 2>&1; then
+    if [ ! -x "$DOCKER" ]; then
         return
     fi
     if [ ! -f "$PROFILE_FILE" ]; then
@@ -44,13 +62,13 @@ auto_launch_model() {
 if pgrep -x "milvus" > /dev/null; then
 
     # Milvus already running — make sure chain server is also up
-    if [[ "$(curl -o /dev/null -s -w "%{http_code}" --max-time 3 "http://localhost:8000/health")" != "200" ]]; then
+    if [ "$(http_status http://localhost:8000/health)" != "200" ]; then
         echo "Chain server not responding — restarting..."
         start_chain_server
     fi
 
     # Check Milvus REST API
-    if [[ "$(curl -o /dev/null -s -w "%{http_code}" --max-time 3 "http://localhost:19530/v1/vector/collections")" != "200" ]]; then
+    if [ "$(http_status http://localhost:19530/v1/vector/collections)" != "200" ]; then
         echo "Error: Milvus REST API not responding."
         exit 2
     fi

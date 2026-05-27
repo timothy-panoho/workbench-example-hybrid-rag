@@ -64,3 +64,9 @@ code/out/variables.env
 # Secrets — never commit
 .env
 variables.env
+
+# Runtime chat session state — user-specific, not part of the repo
+chat_history.json
+chat_sessions/
+current_session
+.model-profile

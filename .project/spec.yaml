@@ -92,6 +92,22 @@ execution:
             proxy:
                 trim_prefix: true
             url: http://localhost:8081/
+        - name: modelui
+          type: custom
+          class: webapp
+          start_command: cd /project/code/ && PROXY_PREFIX=$PROXY_PREFIX $HOME/.conda/envs/ui-env/bin/python3 -m modelui
+          health_check_command: /usr/bin/curl -f "http://localhost:8082/"
+          stop_command: pkill -f "^$HOME/.conda/envs/ui-env/bin/python3 -m modelui"
+          user_msg: ""
+          logfile_path: ""
+          timeout_seconds: 60
+          icon_url: ""
+          webapp_options:
+            autolaunch: false
+            port: "8082"
+            proxy:
+                trim_prefix: true
+            url: http://localhost:8082/
         - name: jupyterlab
           type: jupyterlab
           class: webapp
@@ -144,7 +160,7 @@ execution:
           target: /nvwb-shared-volume/
           description: ""
           options: volumeName=nvwb-shared-volume
-        - type: bind
-          target: /var/run/docker.sock
+        - type: host
+          target: /var/run/docker.sock/
           description: Docker socket so the container can manage local model containers
           options: rw

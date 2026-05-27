@@ -79,22 +79,48 @@ nim_trouble = """
 * If any other processes are running on the local GPU(s), you may run into memory issues when also running the NIM locally. Stop the other processes. 
 """
 
-num_token_label = """
-The maximum number of tokens that can be generated in the completion.
+num_token_label = """Max tokens in the reply (1 token ≈ ¾ of an English word, ~100 tokens ≈ 75 words).
+• Too low → response gets cut off mid-sentence. Raise it if answers feel incomplete.
+• Recommended starting point: 1024. For long-form answers push to 2048–4096.
+• Very high values use more GPU memory and take longer — there is no benefit above the model's own context limit.
 """
 
-temp_label = """
-What sampling temperature to use, between 0 and 2. Higher values like 0.8 will make the output more random, while lower values like 0.2 will make it more focused and deterministic. We generally recommend altering this or top_p but not both.
+temp_label = """Controls how creative / random the reply is. Range: 0 (fully deterministic) → 1 (very creative).
+• 0.1 – 0.3 → focused, factual, consistent. Best for Q&A, code, and summarisation.
+• 0.5 – 0.7 → balanced and natural. Good default for conversation.
+• 0.8 – 1.0 → creative and varied, but may drift off-topic.
+Tip: tune Temperature OR Top P — not both at the same time.
 """
 
-top_p_label = """
-An alternative to sampling with temperature, called nucleus sampling, where the model considers the results of the tokens with top_p probability mass. So 0.1 means only the tokens comprising the top 10% probability mass are considered.
+top_p_label = """Nucleus sampling — restricts the pool of tokens to those whose cumulative probability reaches P.
+• 0.95 – 0.999 → wide pool, natural output (recommended default).
+• 0.5 → conservative / more predictable.
+• 1.0 → no restriction (identical to temperature-only sampling).
+Leave at 0.999 and adjust Temperature instead in most cases.
 """
 
-freq_pen_label = """
-Number between -2.0 and 2.0. Positive values penalize new tokens based on their existing frequency in the text so far, decreasing the model's likelihood to repeat the same line verbatim.
+freq_pen_label = """Penalises tokens that have already appeared often in the reply.
+• 0 (default) → no penalty; model may repeat itself.
+• 0.3 – 0.8 → noticeably reduces repetition. Good for long responses.
+• 2.0 → very strong penalty; output may become unnatural.
+Use this when the model keeps looping on the same phrases.
 """
 
-pres_pen_label = """
-Number between -2.0 and 2.0. Positive values penalize new tokens based on whether they appear in the text so far, increasing the model's likelihood to talk about new topics.
+pres_pen_label = """Penalises any token that has appeared at all in the reply (regardless of frequency).
+• 0 (default) → no penalty.
+• 0.3 – 0.8 → encourages the model to introduce new words / topics.
+• 2.0 → strong push for novelty; may cause the answer to wander.
+Use this when you want a broader, more exploratory answer.
+"""
+
+metrics_guide = """
+| Metric | What it measures | Typical values & tips |
+|---|---|---|
+| **Retrieval time** | Time to search the vector database for relevant documents. Only measured when *Toggle to use Vector Database* is enabled. | < 500 ms = fast; > 2 s may mean the DB is still warming up |
+| **Time to First Token (TTFT)** | Delay from clicking Submit until the first word appears. Covers prompt processing, KV-cache build, and network latency. | < 1 s on a local GPU; NIM on first cold-start can be 5–15 s while TensorRT loads |
+| **Generation Time** | Time to produce the full response after the first token. Longer responses naturally take more time. | Roughly proportional to response length and inversely to GPU speed |
+| **End to End (E2E)** | Total wall-clock time = Retrieval + TTFT + Generation. | Sum of the above rows |
+| **Tokens (est.)** | Estimated number of tokens in the generated reply. ≈ ¾ of a word per token. | ⚠️ If this equals your *Max Tokens* setting the response was **cut off** — increase the slider and retry |
+| **Tokens / Second (est.)** | Generation speed. | 30 – 80 tok/s is typical for a 4 B model on an RTX 4090 |
+| **Inter-Token Latency (est.)** | Average time between consecutive tokens (= 1000 / tokens-per-sec). Lower is better. | < 20 ms = smooth streaming; > 100 ms will feel sluggish |
 """
